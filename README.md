@@ -236,3 +236,12 @@ Defines the style properties for camera buttons
 
 </docgen-api>
 
+
+## License
+
+MIT
+
+## Acknowledgements
+
+- ![isbecker](https://github.com/isbecker)'s comment at https://github.com/ionic-team/capacitor-plugins/issues/1616#issuecomment-1912900318
+- Capawesome plugins repository for formatting scripts and documentation setup.
