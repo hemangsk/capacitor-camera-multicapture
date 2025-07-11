@@ -5,7 +5,7 @@ Capacitor plugin that lets the user Capture multiple photos with a customizable 
 ## Install
 
 ```bash
-npm install https://github.com/hemangsk/camera-multi-capture
+npm install https://github.com/hemangsk/capacitor-camera-multicapture
 npx cap sync
 ```
 
