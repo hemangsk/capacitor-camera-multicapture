@@ -2,6 +2,7 @@
  * Controller for camera operations
  */
 import type { CameraImageData, CameraMultiCapturePlugin } from '../definitions';
+import { CameraOverlayUIOptions } from '../types/ui-types';
 
 /**
  * Interface for camera rectangle dimensions
@@ -18,9 +19,11 @@ export interface CameraRect {
  */
 export class CameraController {
   private plugin: CameraMultiCapturePlugin;
+  private options: CameraOverlayUIOptions;
   
-  constructor(plugin: CameraMultiCapturePlugin) {
+  constructor(plugin: CameraMultiCapturePlugin, options: CameraOverlayUIOptions) {
     this.plugin = plugin;
+    this.options = options;
   }
   
   /**
@@ -92,5 +95,31 @@ export class CameraController {
     } catch (error) {
       console.warn('Failed to stop camera', error);
     }
+  }
+
+  /**
+   * Updates the camera preview rectangle dimensions
+   * Call this method when the container size changes (e.g., orientation change)
+   */
+  async refresh(): Promise<void> {
+
+    setTimeout(async () => {
+    try {
+      const containerElement = document.getElementById(this.options.containerId);
+      if (!containerElement) {
+        throw new Error(`Container with ID ${this.options.containerId} not found`);
+      }
+      const rect = containerElement.getBoundingClientRect();
+      await this.plugin.updatePreviewRect({
+        width: rect.width,
+        height: rect.height,
+        x: rect.x,
+        y: rect.y
+      });
+    } catch (error) {
+      console.error('Failed to update preview rect', error);
+        throw error;
+      }
+    }, 100);
   }
 }

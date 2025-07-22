@@ -32,7 +32,7 @@ export class OverlayManager {
 
   constructor(plugin: CameraMultiCapturePlugin, options: CameraOverlayUIOptions) {
     this.options = options;
-    this.cameraController = new CameraController(plugin);
+    this.cameraController = new CameraController(plugin, options);
   }
 
   /**
@@ -71,6 +71,15 @@ export class OverlayManager {
         this.cleanup();
       }
     });
+  }
+
+
+  async refresh(): Promise<void> {
+    await this.cameraController.refresh();
+  }
+
+  private handleOrientationChange(): void {
+    this.refresh();
   }
 
   /**
@@ -140,6 +149,10 @@ export class OverlayManager {
     if (buttons.zoom) {
       this.createZoomButtons(buttons.zoom, positions.zoomRow);
     }
+
+    window.addEventListener('orientationchange', () => {
+      this.handleOrientationChange();
+    });
   }
 
   /**
@@ -225,5 +238,8 @@ export class OverlayManager {
     if (this.bodyBackgroundColor) {
       document.body.style.backgroundColor = this.bodyBackgroundColor;
     }
+    window.removeEventListener('orientationchange', () => {
+      this.handleOrientationChange();
+    });
   }
 }
