@@ -1,6 +1,6 @@
 {
   "name": "camera-multi-capture",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Capacitor plugin that lets the user Capture multiple photos with a customizable UI overlay in a single camera session",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
@@ -19,10 +19,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hemangsk/capacitor-camera-multicapture.git.git"
+    "url": "git+https://github.com/hemangsk/capacitor-camera-multicapture.git"
   },
   "bugs": {
-    "url": "https://github.com/hemangsk/capacitor-camera-multicapture.git/issues"
+    "url": "https://github.com/hemangsk/capacitor-camera-multicapture/issues"
   },
   "keywords": [
     "capacitor",

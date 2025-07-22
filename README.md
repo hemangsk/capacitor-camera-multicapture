@@ -65,6 +65,7 @@ const result = await initialize({
 * [`stop()`](#stop)
 * [`switchCamera()`](#switchcamera)
 * [`setZoom(...)`](#setzoom)
+* [`updatePreviewRect(...)`](#updatepreviewrect)
 * [Interfaces](#interfaces)
 * [Type Aliases](#type-aliases)
 
@@ -136,6 +137,22 @@ Sets the zoom level of the camera.
 | Param         | Type                           |
 | ------------- | ------------------------------ |
 | **`options`** | <code>{ zoom: number; }</code> |
+
+--------------------
+
+
+### updatePreviewRect(...)
+
+```typescript
+updatePreviewRect(options: CameraPreviewRect) => Promise<void>
+```
+
+Updates the camera preview rectangle dimensions.
+Call this when the container size changes (e.g., orientation change).
+
+| Param         | Type                                                            |
+| ------------- | --------------------------------------------------------------- |
+| **`options`** | <code><a href="#camerapreviewrect">CameraPreviewRect</a></code> |
 
 --------------------
 

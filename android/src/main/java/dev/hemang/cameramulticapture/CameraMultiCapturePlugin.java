@@ -256,4 +256,51 @@ public class CameraMultiCapturePlugin extends Plugin {
             call.reject("Failed to switch camera: " + e.getMessage(), e);
         }
     }
+
+    @PluginMethod
+    public void updatePreviewRect(PluginCall call) {
+        JSObject previewRect = call.getData();
+        if (previewRect == null) {
+            call.reject("Missing previewRect data");
+            return;
+        }
+
+        // Update the current config with new dimensions
+        currentConfig.previewWidth = previewRect.getInteger("width", currentConfig.previewWidth);
+        currentConfig.previewHeight = previewRect.getInteger("height", currentConfig.previewHeight);
+        currentConfig.previewX = previewRect.getInteger("x", currentConfig.previewX);
+        currentConfig.previewY = previewRect.getInteger("y", currentConfig.previewY);
+
+        getActivity().runOnUiThread(() -> {
+            if (previewView != null && cameraProvider != null) {
+                // Update preview view layout
+                android.util.DisplayMetrics displayMetrics = new android.util.DisplayMetrics();
+                getActivity().getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+                float density = displayMetrics.density;
+
+                FrameLayout.LayoutParams params;
+                if (currentConfig.previewWidth == ViewGroup.LayoutParams.MATCH_PARENT && 
+                    currentConfig.previewHeight == ViewGroup.LayoutParams.MATCH_PARENT) {
+                    params = new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    );
+                } else {
+                    int widthInPixels = (int) (currentConfig.previewWidth * density);
+                    int heightInPixels = (int) (currentConfig.previewHeight * density);
+
+                    params = new FrameLayout.LayoutParams(widthInPixels, heightInPixels);
+
+                    params.leftMargin = (int) (currentConfig.previewX * density);
+                    params.topMargin = (int) (currentConfig.previewY * density);
+                }
+
+                previewView.setLayoutParams(params);
+                previewView.requestLayout();
+                call.resolve();
+            } else {
+                call.reject("Preview view not initialized");
+            }
+        });
+    }
 }

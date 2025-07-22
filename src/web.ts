@@ -1,5 +1,5 @@
 import { WebPlugin } from '@capacitor/core';
-import type { CameraImageData, CameraMultiCapturePlugin, CameraOverlayOptions, CameraOverlayResult } from './definitions';
+import type { CameraImageData, CameraMultiCapturePlugin, CameraOverlayOptions, CameraOverlayResult, CameraPreviewRect } from './definitions';
 
 export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCapturePlugin {
   async capture(): Promise<{ value: CameraImageData }> {
@@ -26,6 +26,10 @@ export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCaptu
 
   async setFlash(_options: { enableFlash: boolean }): Promise<void> {
     console.warn('[CameraMultiCapture] setFlash() not available on web.');
+  }
+
+  async updatePreviewRect(_options: CameraPreviewRect): Promise<void> {
+    console.warn('[CameraMultiCapture] updatePreviewRect() not available on web.');
   }
 }
 

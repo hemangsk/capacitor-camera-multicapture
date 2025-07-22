@@ -25,6 +25,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "capture", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setZoom", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "switchCamera", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "updatePreviewRect", returnType: CAPPluginReturnPromise),
     ]
 
     var captureSession: AVCaptureSession?
@@ -191,6 +192,34 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("Switch camera error: \(error.localizedDescription)")
         }
         session.commitConfiguration()
+    }
+
+    @objc func updatePreviewRect(_ call: CAPPluginCall) {
+        guard let previewRect = call.getObject("previewRect") ?? call.options else {
+            call.reject("Missing previewRect")
+            return
+        }
+
+        let x = CGFloat((previewRect["x"] as? NSNumber)?.floatValue ?? 0)
+        let y = CGFloat((previewRect["y"] as? NSNumber)?.floatValue ?? 0)
+        let width = CGFloat(
+            (previewRect["width"] as? NSNumber)?.floatValue ?? Float(UIScreen.main.bounds.width))
+        let height = CGFloat(
+            (previewRect["height"] as? NSNumber)?.floatValue ?? Float(UIScreen.main.bounds.height))
+
+        DispatchQueue.main.async {
+            if let previewView = self.cameraPreviewView, let videoLayer = self.previewLayer {
+                // Update the preview view frame
+                previewView.frame = CGRect(x: x, y: y, width: width, height: height)
+                
+                // Update the video layer frame to match
+                videoLayer.frame = previewView.bounds
+                
+                call.resolve()
+            } else {
+                call.reject("Preview view not initialized")
+            }
+        }
     }
 
     func configureSession(with config: CameraConfig, call: CAPPluginCall) throws {

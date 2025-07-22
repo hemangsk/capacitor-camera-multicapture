@@ -117,4 +117,10 @@ export interface CameraMultiCapturePlugin {
    * Sets the zoom level of the camera.
    */
   setZoom(options: { zoom: number }): Promise<void>;
+
+  /**
+   * Updates the camera preview rectangle dimensions.
+   * Call this when the container size changes (e.g., orientation change).
+   */
+  updatePreviewRect(options: CameraPreviewRect): Promise<void>;
 }
