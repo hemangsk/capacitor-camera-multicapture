@@ -36,21 +36,27 @@ public class CameraConfigMapper {
         config.jpegQuality = data.has("quality") ? data.getInteger("quality") : 85;
         config.autoFocus = data.getBoolean("autoFocus", true);
 
-        // Handle rotation/orientation mapping (matching iOS implementation)
-        int rotation = data.has("rotation") ? data.getInteger("rotation") : 0;
-        switch (rotation) {
-            case 90:
-                config.targetRotation = Surface.ROTATION_90;
-                break;
-            case 180:
-                config.targetRotation = Surface.ROTATION_180;
-                break;
-            case 270:
-                config.targetRotation = Surface.ROTATION_270;
-                break;
-            default:
-                config.targetRotation = Surface.ROTATION_0;
-                break;
+        // Handle rotation/orientation - use provided rotation or auto-detect from device
+        if (data.has("rotation")) {
+            int rotation = data.getInteger("rotation");
+            switch (rotation) {
+                case 90:
+                    config.targetRotation = Surface.ROTATION_90;
+                    break;
+                case 180:
+                    config.targetRotation = Surface.ROTATION_180;
+                    break;
+                case 270:
+                    config.targetRotation = Surface.ROTATION_270;
+                    break;
+                default:
+                    config.targetRotation = Surface.ROTATION_0;
+                    break;
+            }
+        } else {
+            // Auto-detect device orientation if no rotation provided
+            // This will be set in the plugin when we have access to the activity
+            config.targetRotation = Surface.ROTATION_0; // Will be updated in plugin
         }
 
         JSObject previewRect = data.getJSObject("previewRect");
