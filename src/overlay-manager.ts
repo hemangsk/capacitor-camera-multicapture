@@ -213,7 +213,7 @@ export class OverlayManager {
 
     if (this.resolvePromise) {
       this.resolvePromise({
-        images: images.map(img => img.data),
+        images: !cancelled ? images.map(img => img.data) : [],
         cancelled
       });
       this.resolvePromise = null;
