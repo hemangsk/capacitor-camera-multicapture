@@ -2,6 +2,7 @@ package dev.hemang.cameramulticapture;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -48,6 +49,23 @@ public class CameraMultiCapturePlugin extends Plugin {
     private Camera camera;
     private ProcessCameraProvider cameraProvider;
     private CameraConfig currentConfig = new CameraConfig();
+
+    /**
+     * Get current device orientation using Android's standard approach
+     * Returns Surface.ROTATION_* constant based on device orientation
+     */
+    private int getCurrentOrientation() {
+        // Use Android's built-in orientation detection
+        int orientation = getContext().getResources().getConfiguration().orientation;
+        int rotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
+        
+        Log.i("CameraMultiCapture", "System orientation: " + 
+            (orientation == Configuration.ORIENTATION_PORTRAIT ? "PORTRAIT" : "LANDSCAPE") + 
+            ", Display rotation: " + rotation);
+            
+        // Return the display rotation directly - CameraX handles sensor orientation automatically
+        return rotation;
+    }
 
     private void ensurePreviewView() {
         if (previewView != null) return;
@@ -135,11 +153,29 @@ public class CameraMultiCapturePlugin extends Plugin {
 
         // Auto-detect device orientation if not provided by JavaScript
         if (!call.hasOption("rotation")) {
-            int deviceRotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
-            currentConfig.targetRotation = deviceRotation;
-            Log.i("CameraMultiCapture", "Auto-detected device rotation: " + deviceRotation);
+            currentConfig.targetRotation = getCurrentOrientation();
+            Log.i("CameraMultiCapture", "Using auto-detected orientation: " + currentConfig.targetRotation);
         }
 
+        // Check and request camera permission
+        if (getPermissionState(Manifest.permission.CAMERA) != PermissionState.GRANTED) {
+            requestPermissionForAlias(Manifest.permission.CAMERA, call, "cameraPermissionCallback");
+            return;
+        }
+
+        startCameraSession(call);
+    }
+
+    @PermissionCallback
+    private void cameraPermissionCallback(PluginCall call) {
+        if (getPermissionState(Manifest.permission.CAMERA) == PermissionState.GRANTED) {
+            startCameraSession(call);
+        } else {
+            call.reject("Camera permission denied");
+        }
+    }
+
+    private void startCameraSession(PluginCall call) {
         getActivity().runOnUiThread(() -> {
             ensurePreviewView();
             ProcessCameraProvider.getInstance(getContext()).addListener(() -> {
@@ -281,15 +317,15 @@ public class CameraMultiCapturePlugin extends Plugin {
         getActivity().runOnUiThread(() -> {
             // Update orientation when preview rect changes (e.g., device rotation)
             if (!call.hasOption("rotation")) {
-                int deviceRotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
-                if (currentConfig.targetRotation != deviceRotation) {
-                    currentConfig.targetRotation = deviceRotation;
-                    Log.i("CameraMultiCapture", "Updated target rotation: " + deviceRotation);
+                int newOrientation = getCurrentOrientation();
+                if (currentConfig.targetRotation != newOrientation) {
+                    currentConfig.targetRotation = newOrientation;
+                    Log.i("CameraMultiCapture", "Orientation changed to: " + newOrientation);
                     
                     // Update ImageCapture target rotation if available
                     if (imageCapture != null) {
-                        imageCapture.setTargetRotation(deviceRotation);
-                        Log.i("CameraMultiCapture", "Applied rotation to ImageCapture: " + deviceRotation);
+                        imageCapture.setTargetRotation(newOrientation);
+                        Log.i("CameraMultiCapture", "Updated ImageCapture orientation: " + newOrientation);
                     }
                 }
             }
