@@ -111,7 +111,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func capture(_ call: CAPPluginCall) {
-        guard let session = captureSession, let photoOutput = photoOutput else {
+        guard let session = captureSession, photoOutput != nil else {
             call.reject("Camera not initialized")
             return
         }
@@ -195,7 +195,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func updatePreviewRect(_ call: CAPPluginCall) {
-        guard let previewRect = call.getObject("previewRect") ?? call.options else {
+           guard let previewRect = call.getObject("previewRect") ?? (call.options as? JSObject) else {
             call.reject("Missing previewRect")
             return
         }
