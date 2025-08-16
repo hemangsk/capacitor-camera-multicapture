@@ -1,6 +1,6 @@
 {
   "name": "camera-multi-capture",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Capacitor plugin that lets the user Capture multiple photos with a customizable UI overlay in a single camera session",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",

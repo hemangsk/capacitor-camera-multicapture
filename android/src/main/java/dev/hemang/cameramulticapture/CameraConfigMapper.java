@@ -36,7 +36,8 @@ public class CameraConfigMapper {
         config.jpegQuality = data.has("quality") ? data.getInteger("quality") : 85;
         config.autoFocus = data.getBoolean("autoFocus", true);
 
-        int rotation = data.getInt("rotation", 0);
+        // Handle rotation/orientation mapping (matching iOS implementation)
+        int rotation = data.has("rotation") ? data.getInteger("rotation") : 0;
         switch (rotation) {
             case 90:
                 config.targetRotation = Surface.ROTATION_90;
