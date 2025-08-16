@@ -85,6 +85,7 @@ export interface CapturedImage {
 export interface CameraImageData {
   uri: string;
   base64: string;
+  webPath?: string;
 }
 
 export interface CameraOverlayResult {

@@ -4,7 +4,7 @@ import type { CameraImageData, CameraMultiCapturePlugin, CameraOverlayOptions, C
 export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCapturePlugin {
   async capture(): Promise<{ value: CameraImageData }> {
     console.warn('[CameraMultiCapture] capture() not available on web.');
-    return { value: { uri: '', base64: '' } };
+    return { value: { uri: '', base64: '', webPath: '' } };
   }
 
   async stop(): Promise<void> {
