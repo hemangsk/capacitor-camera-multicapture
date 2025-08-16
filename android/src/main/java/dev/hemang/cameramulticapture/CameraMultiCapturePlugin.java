@@ -2,6 +2,7 @@ package dev.hemang.cameramulticapture;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -50,25 +51,20 @@ public class CameraMultiCapturePlugin extends Plugin {
     private CameraConfig currentConfig = new CameraConfig();
 
     /**
-     * Get current device orientation with corrected rotation mapping
-     * Since rotation was reversed in v0.0.10, invert the mapping
+     * Get current device orientation using Android's standard approach
+     * Returns Surface.ROTATION_* constant based on device orientation
      */
     private int getCurrentOrientation() {
+        // Use Android's built-in orientation detection
+        int orientation = getContext().getResources().getConfiguration().orientation;
         int rotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
         
-        // Invert rotation mapping to fix the reversed orientation issue
-        switch (rotation) {
-            case Surface.ROTATION_0:   // Portrait
-                return Surface.ROTATION_90;
-            case Surface.ROTATION_90:  // Landscape left
-                return Surface.ROTATION_180;
-            case Surface.ROTATION_180: // Portrait upside down
-                return Surface.ROTATION_270;
-            case Surface.ROTATION_270: // Landscape right
-                return Surface.ROTATION_0;
-            default:
-                return Surface.ROTATION_0;
-        }
+        Log.i("CameraMultiCapture", "System orientation: " + 
+            (orientation == Configuration.ORIENTATION_PORTRAIT ? "PORTRAIT" : "LANDSCAPE") + 
+            ", Display rotation: " + rotation);
+            
+        // Return the display rotation directly - CameraX handles sensor orientation automatically
+        return rotation;
     }
 
     private void ensurePreviewView() {
@@ -158,6 +154,7 @@ public class CameraMultiCapturePlugin extends Plugin {
         // Auto-detect device orientation if not provided by JavaScript
         if (!call.hasOption("rotation")) {
             currentConfig.targetRotation = getCurrentOrientation();
+            Log.i("CameraMultiCapture", "Using auto-detected orientation: " + currentConfig.targetRotation);
         }
 
         // Check and request camera permission
@@ -323,10 +320,12 @@ public class CameraMultiCapturePlugin extends Plugin {
                 int newOrientation = getCurrentOrientation();
                 if (currentConfig.targetRotation != newOrientation) {
                     currentConfig.targetRotation = newOrientation;
+                    Log.i("CameraMultiCapture", "Orientation changed to: " + newOrientation);
                     
                     // Update ImageCapture target rotation if available
                     if (imageCapture != null) {
                         imageCapture.setTargetRotation(newOrientation);
+                        Log.i("CameraMultiCapture", "Updated ImageCapture orientation: " + newOrientation);
                     }
                 }
             }
