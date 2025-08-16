@@ -1,6 +1,7 @@
 package dev.hemang.cameramulticapture;
 
 import android.util.Size;
+import android.view.Surface;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageCapture;
 import com.getcapacitor.JSObject;
@@ -34,6 +35,22 @@ public class CameraConfigMapper {
         }
         config.jpegQuality = data.has("quality") ? data.getInteger("quality") : 85;
         config.autoFocus = data.getBoolean("autoFocus", true);
+
+        int rotation = data.getInt("rotation", 0);
+        switch (rotation) {
+            case 90:
+                config.targetRotation = Surface.ROTATION_90;
+                break;
+            case 180:
+                config.targetRotation = Surface.ROTATION_180;
+                break;
+            case 270:
+                config.targetRotation = Surface.ROTATION_270;
+                break;
+            default:
+                config.targetRotation = Surface.ROTATION_0;
+                break;
+        }
 
         JSObject previewRect = data.getJSObject("previewRect");
         if (previewRect != null) {
