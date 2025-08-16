@@ -12,6 +12,8 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.util.Log;
+import android.util.Size;
+import android.view.Surface;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
@@ -106,10 +108,24 @@ public class CameraMultiCapturePlugin extends Plugin {
         Preview preview = new Preview.Builder().build();
         preview.setSurfaceProvider(previewView.getSurfaceProvider());
 
+        // Swap resolution dimensions for portrait orientations
+        Size finalResolution = currentConfig.resolution;
+        if (currentConfig.targetRotation == Surface.ROTATION_0 || currentConfig.targetRotation == Surface.ROTATION_180) {
+            // Portrait orientations - ensure height > width
+            if (currentConfig.resolution.getWidth() > currentConfig.resolution.getHeight()) {
+                finalResolution = new Size(currentConfig.resolution.getHeight(), currentConfig.resolution.getWidth());
+            }
+        } else {
+            // Landscape orientations - ensure width > height  
+            if (currentConfig.resolution.getHeight() > currentConfig.resolution.getWidth()) {
+                finalResolution = new Size(currentConfig.resolution.getHeight(), currentConfig.resolution.getWidth());
+            }
+        }
+
         imageCapture = new ImageCapture.Builder()
         .setCaptureMode(currentConfig.captureMode)
         .setTargetRotation(currentConfig.targetRotation)
-        .setTargetResolution(currentConfig.resolution)
+        .setTargetResolution(finalResolution)
         .build();
 
         CameraSelector cameraSelector = new CameraSelector.Builder()
@@ -125,19 +141,17 @@ public class CameraMultiCapturePlugin extends Plugin {
 
         camera.getCameraControl().setZoomRatio(currentConfig.zoomRatio);
         previewView.setKeepScreenOn(true);
-        Log.i("CameraMultiCapture", "Camera session bound successfully");
+
     }
 
     @PluginMethod
     public void start(PluginCall call) {
-        Log.i("CameraMultiCapture", "start");
         currentConfig = CameraConfigMapper.fromJSObject(call.getData());
 
         // Auto-detect device orientation if not provided by JavaScript
         if (!call.hasOption("rotation")) {
             int deviceRotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
             currentConfig.targetRotation = deviceRotation;
-            Log.i("CameraMultiCapture", "Auto-detected device rotation: " + deviceRotation);
         }
 
         getActivity().runOnUiThread(() -> {
@@ -232,16 +246,13 @@ public class CameraMultiCapturePlugin extends Plugin {
         if (call.hasOption("zoom")) {
             Double zoomValue = call.getDouble("zoom");
             zoom = zoomValue != null ? zoomValue.floatValue() : currentConfig.zoomRatio;
-            Log.i("CameraMultiCapture", "setZoom called with zoom parameter: " + zoom);
         } else {
-            Log.i("CameraMultiCapture", "setZoom called without zoom parameter");
             zoom = currentConfig.zoomRatio;
         }
         currentConfig.zoomRatio = zoom;
         getActivity().runOnUiThread(() -> {
             if (camera != null) {
                 camera.getCameraControl().setZoomRatio(zoom);
-                Log.i("CameraMultiCapture", "Zoom updated to: " + zoom);
             }
         });
         call.resolve();
@@ -256,7 +267,6 @@ public class CameraMultiCapturePlugin extends Plugin {
         try {
             getActivity().runOnUiThread(() -> {
                 bindCameraSession();
-                Log.i("CameraMultiCapture", "Switched camera to: " + currentConfig.lensFacing);
                 call.resolve();
             });
         } catch (Exception e) {
@@ -279,17 +289,16 @@ public class CameraMultiCapturePlugin extends Plugin {
         currentConfig.previewY = previewRect.getInteger("y", currentConfig.previewY);
 
         getActivity().runOnUiThread(() -> {
-            // Update orientation when preview rect changes (e.g., device rotation)
             if (!call.hasOption("rotation")) {
                 int deviceRotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
+                
                 if (currentConfig.targetRotation != deviceRotation) {
+                    // Update BOTH the config AND the ImageCapture object
                     currentConfig.targetRotation = deviceRotation;
-                    Log.i("CameraMultiCapture", "Updated target rotation: " + deviceRotation);
                     
                     // Update ImageCapture target rotation if available
                     if (imageCapture != null) {
                         imageCapture.setTargetRotation(deviceRotation);
-                        Log.i("CameraMultiCapture", "Applied rotation to ImageCapture: " + deviceRotation);
                     }
                 }
             }
