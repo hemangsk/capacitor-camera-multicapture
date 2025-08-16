@@ -1,6 +1,7 @@
 /**
  * Controller for camera operations
  */
+import { Capacitor } from '@capacitor/core';
 import type { CameraImageData, CameraMultiCapturePlugin } from '../definitions';
 import { CameraOverlayUIOptions } from '../types/ui-types';
 
@@ -55,6 +56,7 @@ export class CameraController {
   async captureImage(): Promise<CameraImageData | undefined> {
     try {
       const result = await this.plugin.capture();
+      result.value.webPath = Capacitor.convertFileSrc(result.value.uri);
       return result?.value;
     } catch (error) {
       console.error('Failed to capture photo', error);
