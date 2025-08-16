@@ -278,20 +278,6 @@ public class CameraMultiCapturePlugin extends Plugin {
         currentConfig.previewX = previewRect.getInteger("x", currentConfig.previewX);
         currentConfig.previewY = previewRect.getInteger("y", currentConfig.previewY);
 
-        // Update orientation when preview rect changes (e.g., device rotation)
-        if (!call.hasOption("rotation")) {
-            int deviceRotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
-            if (currentConfig.targetRotation != deviceRotation) {
-                currentConfig.targetRotation = deviceRotation;
-                Log.i("CameraMultiCapture", "Updated device rotation: " + deviceRotation);
-                
-                // Rebind camera session with new rotation
-                if (cameraProvider != null) {
-                    bindCameraSession();
-                }
-            }
-        }
-
         getActivity().runOnUiThread(() -> {
             if (previewView != null && cameraProvider != null) {
                 // Update preview view layout
