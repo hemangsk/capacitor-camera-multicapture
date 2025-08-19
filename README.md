@@ -9,6 +9,55 @@ npm install camera-multi-capture@github:hemangsk/capacitor-camera-multicapture
 npx cap sync
 ```
 
+## Configuration
+
+### iOS (Info.plist)
+
+Add the following permissions to your iOS app's `Info.plist` file:
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>This app needs access to camera to capture photos</string>
+<key>NSPhotoLibraryUsageDescription</key>
+<string>This app needs access to photo library to save captured images</string>
+<key>NSPhotoLibraryAddUsageDescription</key>
+<string>This app needs access to photo library to save captured images</string>
+```
+
+### Android (AndroidManifest.xml)
+
+The plugin automatically adds the necessary permissions to your Android app. However, if you need to declare them explicitly, add these to your `android/app/src/main/AndroidManifest.xml`:
+
+```xml
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+```
+
+### Permission Handling
+
+Before using the camera, check and request permissions:
+
+```typescript
+import { CameraMultiCapture } from 'camera-multi-capture';
+
+// Check current permissions
+const permissions = await CameraMultiCapture.checkPermissions();
+
+if (permissions.camera !== 'granted' || permissions.photos !== 'granted') {
+  // Request permissions
+  const result = await CameraMultiCapture.requestPermissions();
+  
+  if (result.camera !== 'granted') {
+    console.error('Camera permission denied');
+    return;
+  }
+}
+
+// Now you can safely use the camera
+const cameraResult = await CameraMultiCapture.start(options);
+```
+
 ## Demo
 
 https://github.com/hemangsk/capacitor-multi-preview-demo
@@ -66,6 +115,8 @@ const result = await initialize({
 * [`switchCamera()`](#switchcamera)
 * [`setZoom(...)`](#setzoom)
 * [`updatePreviewRect(...)`](#updatepreviewrect)
+* [`checkPermissions()`](#checkpermissions)
+* [`requestPermissions()`](#requestpermissions)
 * [Interfaces](#interfaces)
 * [Type Aliases](#type-aliases)
 
@@ -157,6 +208,32 @@ Call this when the container size changes (e.g., orientation change).
 --------------------
 
 
+### checkPermissions()
+
+```typescript
+checkPermissions() => Promise<PermissionStatus>
+```
+
+Check camera and photo library permissions
+
+**Returns:** <code>Promise&lt;<a href="#permissionstatus">PermissionStatus</a>&gt;</code>
+
+--------------------
+
+
+### requestPermissions()
+
+```typescript
+requestPermissions() => Promise<PermissionStatus>
+```
+
+Request camera and photo library permissions
+
+**Returns:** <code>Promise&lt;<a href="#permissionstatus">PermissionStatus</a>&gt;</code>
+
+--------------------
+
+
 ### Interfaces
 
 
@@ -166,6 +243,16 @@ Call this when the container size changes (e.g., orientation change).
 | --------------- | ------------------------------ |
 | **`images`**    | <code>CameraImageData[]</code> |
 | **`cancelled`** | <code>boolean</code>           |
+
+
+#### PermissionStatus
+
+Permission status for the camera multi-capture plugin
+
+| Prop         | Type                                                        |
+| ------------ | ----------------------------------------------------------- |
+| **`camera`** | <code>'granted' \| 'denied' \| 'prompt'</code>             |
+| **`photos`** | <code>'granted' \| 'denied' \| 'prompt'</code>             |
 
 
 #### CameraImageData
