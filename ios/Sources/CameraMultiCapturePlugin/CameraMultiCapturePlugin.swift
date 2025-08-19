@@ -1,6 +1,7 @@
 import AVFoundation
 import Capacitor
 import Foundation
+import Photos
 
 struct CameraConfig {
     var x: CGFloat
@@ -26,6 +27,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setZoom", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "switchCamera", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updatePreviewRect", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
     ]
 
     var captureSession: AVCaptureSession?
@@ -39,6 +42,13 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func start(_ call: CAPPluginCall) {
         print("Received data from JS: \(call.dictionaryRepresentation)")
+
+        // Check camera permission before starting
+        let cameraAuthStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        if cameraAuthStatus != .authorized {
+            call.reject("Camera permission not granted. Please call requestPermissions() first.")
+            return
+        }
 
         guard let previewRect = call.getObject("previewRect") else {
             call.reject("Missing previewRect")
@@ -76,24 +86,16 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         )
         self.cameraPosition = config.cameraPosition
 
-        AVCaptureDevice.requestAccess(for: .video) { granted in
-            DispatchQueue.main.async {
-                if !granted {
-                    call.reject("Camera permission denied")
-                    return
+        self.sessionQueue.async {
+            do {
+                try self.configureSession(with: config, call: call)
+                DispatchQueue.main.async {
+                    call.resolve()
                 }
-                self.sessionQueue.async {
-                    do {
-                        try self.configureSession(with: config, call: call)
-                        DispatchQueue.main.async {
-                            call.resolve()
-                        }
-                    } catch {
-                        DispatchQueue.main.async {
-                            call.reject(
-                                "Camera configuration failed: \(error.localizedDescription)")
-                        }
-                    }
+            } catch {
+                DispatchQueue.main.async {
+                    call.reject(
+                        "Camera configuration failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -311,6 +313,77 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             DispatchQueue.global(qos: .userInitiated).async {
                 self.captureSession?.startRunning()
             }
+        }
+    }
+
+    @objc func checkPermissions(_ call: CAPPluginCall) {
+        let cameraAuthStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        let photosAuthStatus = PHPhotoLibrary.authorizationStatus()
+        
+        let cameraPermission: String
+        switch cameraAuthStatus {
+        case .authorized:
+            cameraPermission = "granted"
+        case .denied, .restricted:
+            cameraPermission = "denied"
+        case .notDetermined:
+            cameraPermission = "prompt"
+        @unknown default:
+            cameraPermission = "prompt"
+        }
+        
+        let photosPermission: String
+        switch photosAuthStatus {
+        case .authorized, .limited:
+            photosPermission = "granted"
+        case .denied, .restricted:
+            photosPermission = "denied"
+        case .notDetermined:
+            photosPermission = "prompt"
+        @unknown default:
+            photosPermission = "prompt"
+        }
+        
+        call.resolve([
+            "camera": cameraPermission,
+            "photos": photosPermission
+        ])
+    }
+    
+    @objc func requestPermissions(_ call: CAPPluginCall) {
+        let group = DispatchGroup()
+        var cameraResult = "prompt"
+        var photosResult = "prompt"
+        
+        // Request camera permission
+        group.enter()
+        AVCaptureDevice.requestAccess(for: .video) { granted in
+            cameraResult = granted ? "granted" : "denied"
+            group.leave()
+        }
+        
+        // Request photos permission
+        group.enter()
+        PHPhotoLibrary.requestAuthorization { status in
+            switch status {
+            case .authorized, .limited:
+                photosResult = "granted"
+            case .denied, .restricted:
+                photosResult = "denied"
+            case .notDetermined:
+                photosResult = "prompt"
+            @unknown default:
+                photosResult = "denied"
+            }
+            group.leave()
+        }
+        
+        // Wait for both permissions and return result
+        group.notify(queue: .main) {
+            call.resolve([
+                "camera": cameraResult,
+                "photos": photosResult
+            ])
         }
     }
 }

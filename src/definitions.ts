@@ -1,3 +1,5 @@
+import type { PermissionState } from '@capacitor/core';
+
 export interface ThumbnailStyle {
   width?: string;
   height?: string;
@@ -93,6 +95,14 @@ export interface CameraOverlayResult {
   cancelled: boolean;
 }
 
+/**
+ * Permission status for the camera multi-capture plugin
+ */
+export interface PermissionStatus {
+  camera: PermissionState;
+  photos: PermissionState;
+}
+
 export interface CameraMultiCapturePlugin {
   /**
    * Starts the camera overlay session.
@@ -124,4 +134,14 @@ export interface CameraMultiCapturePlugin {
    * Call this when the container size changes (e.g., orientation change).
    */
   updatePreviewRect(options: CameraPreviewRect): Promise<void>;
+
+  /**
+   * Check camera and photo library permissions
+   */
+  checkPermissions(): Promise<PermissionStatus>;
+
+  /**
+   * Request camera and photo library permissions
+   */
+  requestPermissions(): Promise<PermissionStatus>;
 }

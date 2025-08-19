@@ -32,6 +32,7 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import com.getcapacitor.PermissionState;
 import com.getcapacitor.JSObject;
@@ -42,7 +43,16 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.util.concurrent.Executor;
 
-@CapacitorPlugin(name = "CameraMultiCapture")
+@CapacitorPlugin(
+    name = "CameraMultiCapture",
+    permissions = {
+        @Permission(strings = {Manifest.permission.CAMERA}, alias = "camera"),
+        @Permission(strings = {
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
+        }, alias = "photos")
+    }
+)
 public class CameraMultiCapturePlugin extends Plugin {
 
     private PreviewView previewView;
@@ -146,6 +156,12 @@ public class CameraMultiCapturePlugin extends Plugin {
 
     @PluginMethod
     public void start(PluginCall call) {
+        // Check permissions before starting camera
+        if (getPermissionState("camera") != PermissionState.GRANTED) {
+            call.reject("Camera permission not granted. Please call requestPermissions() first.");
+            return;
+        }
+
         currentConfig = CameraConfigMapper.fromJSObject(call.getData());
 
         // Auto-detect device orientation if not provided by JavaScript
@@ -333,5 +349,38 @@ public class CameraMultiCapturePlugin extends Plugin {
                 call.reject("Preview view not initialized");
             }
         });
+    }
+
+    @PluginMethod
+    public void checkPermissions(PluginCall call) {
+        JSObject result = new JSObject();
+        
+        // Check camera permission
+        PermissionState cameraState = getPermissionState("camera");
+        result.put("camera", cameraState.toString());
+        
+        // Check photos/storage permission
+        PermissionState photosState = getPermissionState("photos");
+        result.put("photos", photosState.toString());
+        
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void requestPermissions(PluginCall call) {
+        // Request all permissions that aren't already granted
+        if (getPermissionState("camera") != PermissionState.GRANTED || 
+            getPermissionState("photos") != PermissionState.GRANTED) {
+            requestPermissionForAliases(new String[]{"camera", "photos"}, call, "permissionCallback");
+        } else {
+            // All permissions already granted
+            checkPermissions(call);
+        }
+    }
+
+    @PermissionCallback
+    private void permissionCallback(PluginCall call) {
+        // After permission request, return the current status
+        checkPermissions(call);
     }
 }
