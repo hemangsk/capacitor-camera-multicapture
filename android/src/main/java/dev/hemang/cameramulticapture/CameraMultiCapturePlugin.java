@@ -136,6 +136,7 @@ public class CameraMultiCapturePlugin extends Plugin {
         .setCaptureMode(currentConfig.captureMode)
         .setTargetRotation(currentConfig.targetRotation)
         .setTargetResolution(finalResolution)
+        .setFlashMode(currentConfig.flashMode)
         .build();
 
         CameraSelector cameraSelector = new CameraSelector.Builder()
@@ -383,4 +384,61 @@ public class CameraMultiCapturePlugin extends Plugin {
         // After permission request, return the current status
         checkPermissions(call);
     }
+
+    @PluginMethod
+    public void setFlash(PluginCall call) {
+        String flashMode = call.getString("flashMode");
+        if (flashMode == null) {
+            call.reject("Missing flashMode parameter");
+            return;
+        }
+
+        int flashModeInt;
+        switch (flashMode) {
+            case "on":
+                flashModeInt = ImageCapture.FLASH_MODE_ON;
+                break;
+            case "auto":
+                flashModeInt = ImageCapture.FLASH_MODE_AUTO;
+                break;
+            default:
+                flashModeInt = ImageCapture.FLASH_MODE_OFF;
+                break;
+        }
+
+        currentConfig.flashMode = flashModeInt;
+
+        // Rebuild camera session to apply flash settings
+        getActivity().runOnUiThread(() -> {
+            try {
+                bindCameraSession();
+                JSObject result = new JSObject();
+                result.put("flashMode", flashMode);
+                call.resolve(result);
+            } catch (Exception e) {
+                call.reject("Failed to set flash mode: " + e.getMessage(), e);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void getFlash(PluginCall call) {
+        String flashMode;
+        switch (currentConfig.flashMode) {
+            case ImageCapture.FLASH_MODE_ON:
+                flashMode = "on";
+                break;
+            case ImageCapture.FLASH_MODE_AUTO:
+                flashMode = "auto";
+                break;
+            default:
+                flashMode = "off";
+                break;
+        }
+
+        JSObject result = new JSObject();
+        result.put("flashMode", flashMode);
+        call.resolve(result);
+    }
+
 }

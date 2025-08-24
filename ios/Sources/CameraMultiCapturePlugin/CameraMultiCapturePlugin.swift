@@ -14,6 +14,7 @@ struct CameraConfig {
     var jpegQuality: CGFloat
     var autoFocus: Bool
     var orientation: AVCaptureVideoOrientation
+    var flashMode: AVCaptureDevice.FlashMode
 }
 
 @objc(CameraMultiCapturePlugin)
@@ -27,6 +28,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setZoom", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "switchCamera", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updatePreviewRect", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setFlash", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getFlash", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
     ]
@@ -37,6 +40,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var previewLayer: AVCaptureVideoPreviewLayer?
     var cameraPreviewView: UIView?
     var cameraPosition: AVCaptureDevice.Position = .back
+    var currentFlashMode: AVCaptureDevice.FlashMode = .off
     let sessionQueue = DispatchQueue(label: "camera.session.queue")
     var captureDelegate: PhotoCaptureDelegate?
 
@@ -77,14 +81,23 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         case 270: orientation = .landscapeLeft
         default: orientation = .portrait
         }
+        
+        let flashModeString = call.getString("flash") ?? "off"
+        let flashMode: AVCaptureDevice.FlashMode
+        switch flashModeString {
+        case "on": flashMode = .on
+        case "auto": flashMode = .auto
+        default: flashMode = .off
+        }
 
         let config = CameraConfig(
             x: x, y: y, width: width, height: height,
             cameraPosition: position, quality: qualityPreset,
             zoom: zoom, jpegQuality: jpegQuality, autoFocus: autofocus,
-            orientation: orientation
+            orientation: orientation, flashMode: flashMode
         )
         self.cameraPosition = config.cameraPosition
+        self.currentFlashMode = config.flashMode
 
         self.sessionQueue.async {
             do {
@@ -140,6 +153,11 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let resultType = call.getString("resultType") ?? "base64"
         let settings = AVCapturePhotoSettings()
         settings.isHighResolutionPhotoEnabled = photoOutput.isHighResolutionCaptureEnabled
+        
+        // Apply flash settings
+        if photoOutput.supportedFlashModes.contains(currentFlashMode) {
+            settings.flashMode = currentFlashMode
+        }
         
         let delegate = PhotoCaptureDelegate(plugin: self, call: call, resultType: resultType)
         self.captureDelegate = delegate
@@ -385,6 +403,42 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                 "photos": photosResult
             ])
         }
+    }
+
+    @objc func setFlash(_ call: CAPPluginCall) {
+        guard let modeString = call.getString("flashMode") else {
+            call.reject("Missing flash mode parameter")
+            return
+        }
+        
+        let flashMode: AVCaptureDevice.FlashMode
+        switch modeString {
+        case "on": flashMode = .on
+        case "auto": flashMode = .auto
+        default: flashMode = .off
+        }
+        
+        // Check if the current device supports flash
+        guard let device = currentInput?.device, device.hasFlash else {
+            call.reject("Flash not available on current camera")
+            return
+        }
+        
+        // Update the current flash mode
+        currentFlashMode = flashMode
+        
+        call.resolve(["flashMode": modeString])
+    }
+
+    @objc func getFlash(_ call: CAPPluginCall) {
+        let modeString: String
+        switch currentFlashMode {
+        case .on: modeString = "on"
+        case .auto: modeString = "auto"
+        default: modeString = "off"
+        }
+        
+        call.resolve(["flashMode": modeString])
     }
 }
 

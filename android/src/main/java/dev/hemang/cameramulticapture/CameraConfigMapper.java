@@ -36,6 +36,20 @@ public class CameraConfigMapper {
         config.jpegQuality = data.has("quality") ? data.getInteger("quality") : 85;
         config.autoFocus = data.getBoolean("autoFocus", true);
 
+        // Handle flash mode
+        String flashMode = data.getString("flash", "off");
+        switch (flashMode) {
+            case "on":
+                config.flashMode = ImageCapture.FLASH_MODE_ON;
+                break;
+            case "auto":
+                config.flashMode = ImageCapture.FLASH_MODE_AUTO;
+                break;
+            default:
+                config.flashMode = ImageCapture.FLASH_MODE_OFF;
+                break;
+        }
+
         // Handle rotation/orientation - use provided rotation or auto-detect from device
         if (data.has("rotation")) {
             int rotation = data.getInteger("rotation");
