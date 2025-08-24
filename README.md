@@ -88,6 +88,17 @@ const result = await initialize({
   // this.navCtrl.pop();
   // this.navCtrl.navigateBack();
 });
+
+// Single capture mode example - returns immediately after one photo
+const singleResult = await initialize({
+  containerId: 'camera-overlay',
+  quality: 90,
+  maxCaptures: 1  // Automatically returns after capturing one image
+}).then((result: CameraOverlayResult) => {
+  if (!result.cancelled && result.images.length > 0) {
+    console.log('Single image captured:', result.images[0]);
+  }
+});
 ```
 
 ```html
@@ -104,6 +115,23 @@ const result = await initialize({
   --ion-background-color: transparent !important;
 }
 ```
+
+### Examples
+
+#### Single Capture Mode
+
+```typescript
+// Capture only one image and return immediately
+const result = await initialize({
+  maxCaptures: 1,  // Single capture mode
+  containerId: 'camera-container',
+  quality: 90
+});
+```
+
+#### Smart Zoom with Physical Camera Switching
+
+The plugin automatically detects available physical cameras (ultrawide, wide, telephoto) and displays appropriate zoom buttons. The system seamlessly switches between physical cameras when you select certain zoom levels.
 
 ## API
 
@@ -279,6 +307,7 @@ Structure for image data returned by the camera
 | **`resolution`**     | <code><a href="#resolution">Resolution</a></code>                     |
 | **`zoom`**           | <code>number</code>                                                   |
 | **`autoFocus`**      | <code>boolean</code>                                                  |
+| **`maxCaptures`**    | <code>number</code>                                                   |
 
 
 #### CameraOverlayButtons
