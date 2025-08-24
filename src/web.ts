@@ -24,7 +24,12 @@ export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCaptu
     console.warn('[CameraMultiCapture] setZoom() not available on web.');
   }
 
-  async setFlash(_options: { enableFlash: boolean }): Promise<void> {
+  async getFlash(): Promise<{ flashMode: 'on' | 'off' | 'auto' }> {
+    console.warn('[CameraMultiCapture] getFlash() not available on web.');
+    return { flashMode: 'off' };
+  }
+
+  async setFlash(_options: { flashMode: 'on' | 'off' | 'auto' }): Promise<void> {
     console.warn('[CameraMultiCapture] setFlash() not available on web.');
   }
 

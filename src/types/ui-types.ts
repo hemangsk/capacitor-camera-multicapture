@@ -53,6 +53,7 @@ export interface ButtonsConfig {
   cancel: IconButtonConfig;
   switchCamera?: IconButtonConfig;
   zoom?: ZoomButtonConfig;
+  flash?: ToggleButtonConfig;
 }
 
 /**

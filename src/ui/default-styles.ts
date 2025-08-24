@@ -84,5 +84,18 @@ export const defaultButtons: ButtonsConfig = {
       size: 24
     },
     levels: [1, 2, 3, 4]
+  },
+  flash: {
+    offIcon: defaultIcons.flashOffIcon,
+    onIcon: defaultIcons.flashOnIcon,
+    autoIcon: defaultIcons.flashAutoIcon,
+    style: {
+      radius: 30,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      color: '#ffffff',
+      padding: '10px',
+      size: 24
+    },
+    position: 'topLeft'
   }
 };

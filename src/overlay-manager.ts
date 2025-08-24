@@ -204,6 +204,45 @@ export class OverlayManager {
   }
 
   /**
+   * Creates the flash toggle button
+   */
+  private createFlashButton(config: any, container: HTMLElement): void {
+    const flashBtn = createButton({
+      ...config,
+      icon: config.offIcon // Start with off icon
+    });
+
+    const updateFlashIcon = (mode: 'on' | 'off' | 'auto') => {
+      let icon: string;
+      switch (mode) {
+        case 'on':
+          icon = config.onIcon;
+          break;
+        case 'auto':
+          icon = config.autoIcon;
+          break;
+        case 'off':
+        default:
+          icon = config.offIcon;
+          break;
+      }
+      flashBtn.innerHTML = icon;
+    };
+
+    flashBtn.onclick = async () => {
+      try {
+        const newMode = await this.cameraController.toggleFlash();
+        updateFlashIcon(newMode);
+      } catch (error) {
+        console.error('Failed to toggle flash', error);
+      }
+    };
+
+    container.appendChild(flashBtn);
+  }
+
+ 
+  /**
    * Completes the capture process
    */
   private completeCapture(cancelled: boolean): void {
