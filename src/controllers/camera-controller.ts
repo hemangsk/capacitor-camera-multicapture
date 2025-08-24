@@ -21,6 +21,7 @@ export interface CameraRect {
 export class CameraController {
   private plugin: CameraMultiCapturePlugin;
   private options: CameraOverlayUIOptions;
+  private flashMode: 'on' | 'off' | 'auto' = 'off';
   
   constructor(plugin: CameraMultiCapturePlugin, options: CameraOverlayUIOptions) {
     this.plugin = plugin;

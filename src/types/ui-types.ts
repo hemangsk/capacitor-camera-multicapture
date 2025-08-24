@@ -30,11 +30,12 @@ export interface IconButtonConfig extends BaseButtonConfig {
 }
 
 /**
- * Configuration for toggle buttons (like flash when added in future)
+ * Configuration for toggle buttons (like flash)
  */
 export interface ToggleButtonConfig extends BaseButtonConfig {
   onIcon?: string;
   offIcon?: string;
+  autoIcon?: string;
 }
 
 /**
