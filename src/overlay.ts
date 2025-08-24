@@ -29,7 +29,8 @@ export const initialize = (options: CameraOverlayOptions): Promise<CameraOverlay
     containerId: options.containerId,
     quality: options.quality,
     thumbnailStyle: options.thumbnailStyle,
-    buttons: convertButtonsConfig(options.buttons)
+    buttons: convertButtonsConfig(options.buttons),
+    maxCaptures: options.maxCaptures
   };
   
   const overlayManager = new OverlayManager(plugin, uiOptions);

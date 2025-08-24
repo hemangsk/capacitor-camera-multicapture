@@ -78,6 +78,7 @@ export interface CameraOverlayOptions {
   zoom?: number;
   autoFocus?: boolean;
   flash?: 'on' | 'off' | 'auto';
+  maxCaptures?: number;
 }
 
 
