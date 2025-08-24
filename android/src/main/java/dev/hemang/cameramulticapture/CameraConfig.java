@@ -19,6 +19,7 @@ public class CameraConfig {
     public int previewHeight;
     public int previewX;
     public int previewY;
+    public int flashMode;
 
 
     public CameraConfig() {
@@ -33,5 +34,6 @@ public class CameraConfig {
         this.previewHeight = ViewGroup.LayoutParams.MATCH_PARENT;
         this.previewX = 0;
         this.previewY = 0;
+        this.flashMode = ImageCapture.FLASH_MODE_OFF;
     }
 }
