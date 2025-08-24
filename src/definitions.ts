@@ -50,6 +50,13 @@ export interface CameraOverlayButtons {
     style?: ButtonStyle;
     levels?: number[];
   };
+  flash?: {
+    onIcon?: string;
+    offIcon?: string;
+    autoIcon?: string;
+    style?: ButtonStyle;
+    position?: 'topLeft' | 'topRight' | 'custom';
+  };
 }
 
 export interface CameraPreviewRect {
@@ -70,6 +77,7 @@ export interface CameraOverlayOptions {
   resolution?: Resolution;
   zoom?: number;
   autoFocus?: boolean;
+  flash?: 'on' | 'off' | 'auto';
 }
 
 
@@ -134,6 +142,16 @@ export interface CameraMultiCapturePlugin {
    * Call this when the container size changes (e.g., orientation change).
    */
   updatePreviewRect(options: CameraPreviewRect): Promise<void>;
+
+  /**
+   * Sets the flash mode of the camera.
+   */
+  setFlash(options: { flashMode: 'on' | 'off' | 'auto' }): Promise<void>;
+
+  /**
+   * Gets the current flash mode.
+   */
+  getFlash(): Promise<{ flashMode: 'on' | 'off' | 'auto' }>;
 
   /**
    * Check camera and photo library permissions

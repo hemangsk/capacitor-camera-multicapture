@@ -100,6 +100,47 @@ export class CameraController {
   }
 
   /**
+   * Sets the flash mode
+   */
+  async setFlash(mode: 'on' | 'off' | 'auto'): Promise<void> {
+    try {
+      await this.plugin.setFlash({ flashMode: mode });
+      this.flashMode = mode;
+    } catch (error) {
+      console.error('Failed to set flash mode', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Gets the current flash mode
+   */
+  getFlashMode(): 'on' | 'off' | 'auto' {
+    return this.flashMode;
+  }
+
+  /**
+   * Toggles flash mode between off, on, and auto
+   */
+  async toggleFlash(): Promise<'on' | 'off' | 'auto'> {
+    let newMode: 'on' | 'off' | 'auto';
+    switch (this.flashMode) {
+      case 'off':
+        newMode = 'on';
+        break;
+      case 'on':
+        newMode = 'auto';
+        break;
+      case 'auto':
+      default:
+        newMode = 'off';
+        break;
+    }
+    await this.setFlash(newMode);
+    return newMode;
+  }
+
+  /**
    * Updates the camera preview rectangle dimensions
    * Call this method when the container size changes (e.g., orientation change)
    */
