@@ -30,6 +30,9 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "updatePreviewRect", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setFlash", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getFlash", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getAvailableZoomLevels", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getAvailableCameras", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "switchToPhysicalCamera", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
     ]
@@ -174,13 +177,64 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         do {
             try input.device.lockForConfiguration()
             // Clamp zoom factor to valid range
+            let minZoom = input.device.minAvailableVideoZoomFactor
             let maxZoom = input.device.activeFormat.videoMaxZoomFactor
-            input.device.videoZoomFactor = max(1.0, min(zoomFactor, maxZoom))
+            input.device.videoZoomFactor = max(minZoom, min(zoomFactor, maxZoom))
             input.device.unlockForConfiguration()
             call.resolve(["zoom": input.device.videoZoomFactor])
         } catch {
             call.reject("Failed to set zoom: \(error.localizedDescription)")
         }
+    }
+
+    @objc func getAvailableZoomLevels(_ call: CAPPluginCall) {
+        guard let input = currentInput else {
+            call.reject("Camera not initialized")
+            return
+        }
+        
+        let device = input.device
+        let minZoom = device.minAvailableVideoZoomFactor
+        let maxZoom = device.activeFormat.videoMaxZoomFactor
+        
+        // Generate suggested preset levels based on device capabilities
+        var presetLevels: [Float] = []
+        
+        // Add ultra-wide if available (0.5x or 0.7x depending on device)
+        if minZoom < 1.0 {
+            let ultraWide: Float
+            if minZoom > 0.6 && minZoom < 0.8 {
+                ultraWide = 0.7
+            } else if minZoom < 0.6 {
+                ultraWide = 0.5
+            } else {
+                ultraWide = Float(minZoom)
+            }
+            presetLevels.append(ultraWide)
+        }
+        
+        // Always add 1x
+        presetLevels.append(1.0)
+        
+        // Add telephoto presets based on max zoom
+        if maxZoom >= 2.0 {
+            presetLevels.append(2.0)
+        }
+        if maxZoom >= 3.0 {
+            presetLevels.append(3.0)
+        }
+        if maxZoom >= 5.0 {
+            presetLevels.append(5.0)
+        }
+        if maxZoom >= 10.0 {
+            presetLevels.append(10.0)
+        }
+        
+        call.resolve([
+            "minZoom": Float(minZoom),
+            "maxZoom": Float(maxZoom),
+            "presetLevels": presetLevels
+        ])
     }
 
     @objc func switchCamera(_ call: CAPPluginCall) {
@@ -212,6 +266,106 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("Switch camera error: \(error.localizedDescription)")
         }
         session.commitConfiguration()
+    }
+    
+    @objc func getAvailableCameras(_ call: CAPPluginCall) {
+        // Check for available cameras on the current position
+        let hasUltrawide = AVCaptureDevice.default(
+            .builtInUltraWideCamera, for: .video, position: cameraPosition
+        ) != nil
+        
+        let hasWide = AVCaptureDevice.default(
+            .builtInWideAngleCamera, for: .video, position: cameraPosition
+        ) != nil
+        
+        let hasTelephoto = AVCaptureDevice.default(
+            .builtInTelephotoCamera, for: .video, position: cameraPosition
+        ) != nil
+        
+        var result = [String: Any]()
+        result["hasUltrawide"] = hasUltrawide
+        result["hasWide"] = hasWide
+        result["hasTelephoto"] = hasTelephoto
+        
+        // Standard zoom factors for each lens type
+        if hasUltrawide {
+            result["ultrawideZoomFactor"] = 0.5
+        }
+        result["wideZoomFactor"] = 1.0
+        if hasTelephoto {
+            // Telephoto zoom factor varies by device (2x, 2.5x, 3x, etc.)
+            // We'll use 2.0 as default but this should be device-specific
+            result["telephotoZoomFactor"] = 2.0
+        }
+        
+        call.resolve(result)
+    }
+    
+    @objc func switchToPhysicalCamera(_ call: CAPPluginCall) {
+        guard let session = captureSession,
+              let zoomFactor = call.getFloat("zoomFactor") else {
+            call.reject("Camera not initialized or missing zoomFactor parameter")
+            return
+        }
+        
+        // Determine which camera to use based on zoom factor
+        let deviceType: AVCaptureDevice.DeviceType
+        if zoomFactor < 1.0 {
+            deviceType = .builtInUltraWideCamera
+        } else if zoomFactor >= 2.0 {
+            deviceType = .builtInTelephotoCamera
+        } else {
+            deviceType = .builtInWideAngleCamera
+        }
+        
+        // Try to get the requested camera
+        guard let newDevice = AVCaptureDevice.default(
+            deviceType, for: .video, position: cameraPosition
+        ) else {
+            // Fallback to wide angle if requested camera not available
+            guard let fallbackDevice = AVCaptureDevice.default(
+                .builtInWideAngleCamera, for: .video, position: cameraPosition
+            ) else {
+                call.reject("No suitable camera available")
+                return
+            }
+            switchToDevice(fallbackDevice, in: session, call: call)
+            return
+        }
+        
+        switchToDevice(newDevice, in: session, call: call)
+    }
+    
+    private func switchToDevice(_ device: AVCaptureDevice, in session: AVCaptureSession, call: CAPPluginCall) {
+        session.beginConfiguration()
+        
+        // Remove current input
+        if let currentInput = currentInput {
+            session.removeInput(currentInput)
+        }
+        
+        do {
+            // Add new input
+            let newInput = try AVCaptureDeviceInput(device: device)
+            if session.canAddInput(newInput) {
+                session.addInput(newInput)
+                self.currentInput = newInput
+                
+                // Reset zoom to 1.0 for the new camera
+                try device.lockForConfiguration()
+                device.videoZoomFactor = 1.0
+                device.unlockForConfiguration()
+                
+                session.commitConfiguration()
+                call.resolve()
+            } else {
+                session.commitConfiguration()
+                call.reject("Cannot add new camera input")
+            }
+        } catch {
+            session.commitConfiguration()
+            call.reject("Failed to switch camera: \(error.localizedDescription)")
+        }
     }
 
     @objc func updatePreviewRect(_ call: CAPPluginCall) {
@@ -334,7 +488,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    @objc func checkPermissions(_ call: CAPPluginCall) {
+    @objc public override func checkPermissions(_ call: CAPPluginCall) {
         let cameraAuthStatus = AVCaptureDevice.authorizationStatus(for: .video)
         let photosAuthStatus = PHPhotoLibrary.authorizationStatus()
         
@@ -368,7 +522,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         ])
     }
     
-    @objc func requestPermissions(_ call: CAPPluginCall) {
+    @objc public override func requestPermissions(_ call: CAPPluginCall) {
         let group = DispatchGroup()
         var cameraResult = "prompt"
         var photosResult = "prompt"

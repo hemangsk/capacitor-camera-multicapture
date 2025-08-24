@@ -33,8 +33,39 @@ export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCaptu
     console.warn('[CameraMultiCapture] setFlash() not available on web.');
   }
 
+  async getAvailableZoomLevels(): Promise<{ minZoom: number; maxZoom: number; presetLevels: number[] }> {
+    console.warn('[CameraMultiCapture] getAvailableZoomLevels() not available on web.');
+    // Return default values for web
+    return {
+      minZoom: 1.0,
+      maxZoom: 4.0,
+      presetLevels: [1, 2, 3, 4]
+    };
+  }
+
   async updatePreviewRect(_options: CameraPreviewRect): Promise<void> {
     console.warn('[CameraMultiCapture] updatePreviewRect() not available on web.');
+  }
+
+  async getAvailableCameras(): Promise<{
+    hasUltrawide: boolean;
+    hasWide: boolean;
+    hasTelephoto: boolean;
+    ultrawideZoomFactor?: number;
+    wideZoomFactor: number;
+    telephotoZoomFactor?: number;
+  }> {
+    console.warn('[CameraMultiCapture] getAvailableCameras() not available on web.');
+    return {
+      hasUltrawide: false,
+      hasWide: true,
+      hasTelephoto: false,
+      wideZoomFactor: 1.0
+    };
+  }
+
+  async switchToPhysicalCamera(_options: { zoomFactor: number }): Promise<void> {
+    console.warn('[CameraMultiCapture] switchToPhysicalCamera() not available on web.');
   }
 
   async checkPermissions(): Promise<PermissionStatus> {

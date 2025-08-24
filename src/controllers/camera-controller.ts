@@ -22,6 +22,14 @@ export class CameraController {
   private plugin: CameraMultiCapturePlugin;
   private options: CameraOverlayUIOptions;
   private flashMode: 'on' | 'off' | 'auto' = 'off';
+  private availableCameras: {
+    hasUltrawide: boolean;
+    hasWide: boolean;
+    hasTelephoto: boolean;
+    ultrawideZoomFactor?: number;
+    wideZoomFactor: number;
+    telephotoZoomFactor?: number;
+  } | null = null;
   
   constructor(plugin: CameraMultiCapturePlugin, options: CameraOverlayUIOptions) {
     this.plugin = plugin;
@@ -75,6 +83,55 @@ export class CameraController {
       console.error('Failed to set zoom', error);
       throw error;
     }
+  }
+
+  /**
+   * Gets available cameras information
+   */
+  async getAvailableCameras(): Promise<{
+    hasUltrawide: boolean;
+    hasWide: boolean;
+    hasTelephoto: boolean;
+    ultrawideZoomFactor?: number;
+    wideZoomFactor: number;
+    telephotoZoomFactor?: number;
+  }> {
+    try {
+      if (!this.availableCameras) {
+        this.availableCameras = await this.plugin.getAvailableCameras();
+      }
+      return this.availableCameras;
+    } catch (error) {
+      console.error('Failed to get available cameras', error);
+      // Return default values
+      return {
+        hasUltrawide: false,
+        hasWide: true,
+        hasTelephoto: false,
+        wideZoomFactor: 1.0
+      };
+    }
+  }
+
+  /**
+   * Switches to a physical camera based on zoom factor
+   * This will switch to the appropriate lens (ultrawide, wide, telephoto)
+   */
+  async switchToPhysicalCamera(zoomFactor: number): Promise<void> {
+    try {
+      await this.plugin.switchToPhysicalCamera({ zoomFactor });
+    } catch (error) {
+      console.error('Failed to switch physical camera', error);
+      // Fallback to regular zoom
+      await this.setZoom(zoomFactor);
+    }
+  }
+
+  /**
+   * Gets available zoom levels for the current camera
+   */
+  async getAvailableZoomLevels(): Promise<{ minZoom: number; maxZoom: number; presetLevels: number[] }> {
+    return await this.plugin.getAvailableZoomLevels();
   }
   
   /**
@@ -165,5 +222,74 @@ export class CameraController {
         throw error;
       }
     }, 100);
+  }
+
+  /**
+   * Gets smart zoom levels that include physical camera switches
+   * Returns an array of zoom levels and whether each is a physical camera
+   */
+  async getSmartZoomLevels(): Promise<{ level: number; isPhysicalCamera: boolean }[]> {
+    const cameras = await this.getAvailableCameras();
+    const zoomLevels: { level: number; isPhysicalCamera: boolean }[] = [];
+    
+    // Add ultrawide if available
+    if (cameras.hasUltrawide && cameras.ultrawideZoomFactor) {
+      zoomLevels.push({ level: cameras.ultrawideZoomFactor, isPhysicalCamera: true });
+    }
+    
+    // Always add wide (1x)
+    zoomLevels.push({ level: cameras.wideZoomFactor, isPhysicalCamera: true });
+    
+    // Add telephoto if available
+    if (cameras.hasTelephoto && cameras.telephotoZoomFactor) {
+      zoomLevels.push({ level: cameras.telephotoZoomFactor, isPhysicalCamera: true });
+    }
+    
+    // Add digital zoom levels
+    const digitalZoomLevels = [3, 5, 10];
+    for (const level of digitalZoomLevels) {
+      // Only add if it's not already covered by a physical camera
+      const isPhysicalCamera = zoomLevels.some(z => z.isPhysicalCamera && Math.abs(z.level - level) < 0.1);
+      if (!isPhysicalCamera && level > cameras.wideZoomFactor) {
+        // Only add if within device capabilities
+        const zoomInfo = await this.getAvailableZoomLevels();
+        if (level <= zoomInfo.maxZoom) {
+          zoomLevels.push({ level, isPhysicalCamera: false });
+        }
+      }
+    }
+    
+    // Sort by zoom level
+    zoomLevels.sort((a, b) => a.level - b.level);
+    
+    return zoomLevels;
+  }
+
+  /**
+   * Performs smart zoom - switches physical cameras when appropriate
+   */
+  async performSmartZoom(targetZoom: number): Promise<void> {
+    const cameras = await this.getAvailableCameras();
+    
+    // Determine if this zoom level should trigger a physical camera switch
+    const physicalCameraZooms: number[] = [];
+    if (cameras.hasUltrawide && cameras.ultrawideZoomFactor) {
+      physicalCameraZooms.push(cameras.ultrawideZoomFactor);
+    }
+    physicalCameraZooms.push(cameras.wideZoomFactor);
+    if (cameras.hasTelephoto && cameras.telephotoZoomFactor) {
+      physicalCameraZooms.push(cameras.telephotoZoomFactor);
+    }
+    
+    // Check if target zoom matches a physical camera
+    const matchingPhysicalCamera = physicalCameraZooms.find(z => Math.abs(z - targetZoom) < 0.1);
+    
+    if (matchingPhysicalCamera) {
+      // Switch to the physical camera
+      await this.switchToPhysicalCamera(targetZoom);
+    } else {
+      // Use digital zoom
+      await this.setZoom(targetZoom);
+    }
   }
 }
