@@ -15,6 +15,9 @@ export const defaultIcons = {
   cancelIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z" fill="currentColor"/></svg>`,
   switchCameraIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M20 4h-3.17L15 2H9L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 11.5V13H9v2.5L5.5 12 9 8.5V11h6V8.5l3.5 3.5-3.5 3.5z" fill="currentColor"/></svg>`,
   zoomIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" fill="currentColor"/><path d="M12 10h-2v2H9v-2H7V9h2V7h1v2h2v1z" fill="currentColor"/></svg>`,
+  flashOffIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M17 10h-4l3-8H7v11h3v9l7-12zm-7-8V4h2.17l-2.17 6H8.83L10 2z" fill="currentColor"/><path d="M2.81 2.81L1.39 4.22l6.39 6.39H7v11h3v9l1.68-2.9 9.12 9.12 1.41-1.41L2.81 2.81z" fill="currentColor"/></svg>`,
+  flashOnIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M7 2v11h3v9l7-12h-4l3-8z" fill="currentColor"/></svg>`,
+  flashAutoIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M7 2v11h3v9l7-12h-4l3-8z" fill="currentColor"/><text x="12" y="20" text-anchor="middle" font-size="8" font-weight="bold" fill="currentColor">A</text></svg>`,
 };
 
 /**
