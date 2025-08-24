@@ -102,6 +102,9 @@ export class OverlayManager {
 
     // Create gallery
     const galleryElement = createGallery(this.overlayElement);
+    if (this.options.maxCaptures === 1) {
+      galleryElement.style.display = 'none';
+    }
     this.galleryController = new GalleryController(
       galleryElement,
       this.options.thumbnailStyle
@@ -122,18 +125,30 @@ export class OverlayManager {
         const imageData = await this.cameraController.captureImage();
         if (imageData && this.galleryController) {
           this.galleryController.addImage(imageData);
+          
+          // Check if we've reached maxCaptures limit
+          if (this.options.maxCaptures && 
+              this.galleryController.getImages().length >= this.options.maxCaptures) {
+            // Auto-complete capture when limit is reached
+            setTimeout(() => {
+              this.completeCapture(false);
+            }, 100); // Small delay to ensure image is properly added
+          }
         }
       } catch (error) {
         console.error('Failed to capture image', error);
       }
     };
 
-    const doneBtn = createButton(buttons.done);
-    bottomCells.right.appendChild(doneBtn);
+    // Only show Done button if not in single capture mode
+    if (this.options.maxCaptures !== 1) {
+      const doneBtn = createButton(buttons.done);
+      bottomCells.right.appendChild(doneBtn);
 
-    doneBtn.onclick = () => {
-      this.completeCapture(false);
-    };
+      doneBtn.onclick = () => {
+        this.completeCapture(false);
+      };
+    }
 
     const cancelBtn = createButton(buttons.cancel);
     bottomCells.left.appendChild(cancelBtn);

@@ -73,4 +73,5 @@ export interface CameraOverlayUIOptions {
   buttons?: Partial<ButtonsConfig>;
   thumbnailStyle?: ThumbnailStyle;
   quality?: number;
+  maxCaptures?: number;
 }
