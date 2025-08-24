@@ -28,6 +28,10 @@ import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraManager;
+import androidx.camera.camera2.interop.Camera2CameraInfo;
+
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -42,6 +46,11 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.util.concurrent.Executor;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import org.json.JSONArray;
 
 @CapacitorPlugin(
     name = "CameraMultiCapture",
@@ -111,6 +120,14 @@ public class CameraMultiCapturePlugin extends Plugin {
         if (cameraProvider == null || previewView == null) {
             Log.e("CameraMultiCapture", "Camera provider or previewView is null");
             return;
+        }
+
+        // Preserve current zoom level before rebuilding session
+        if (camera != null) {
+            androidx.camera.core.ZoomState zoomState = camera.getCameraInfo().getZoomState().getValue();
+            if (zoomState != null) {
+                currentConfig.zoomRatio = zoomState.getZoomRatio();
+            }
         }
 
         cameraProvider.unbindAll();
@@ -266,13 +283,98 @@ public class CameraMultiCapturePlugin extends Plugin {
         } else {
             zoom = currentConfig.zoomRatio;
         }
-        currentConfig.zoomRatio = zoom;
+        
         getActivity().runOnUiThread(() -> {
             if (camera != null) {
-                camera.getCameraControl().setZoomRatio(zoom);
+                // Get the zoom state to determine min and max zoom ratios
+                @SuppressWarnings("UnusedVariable")
+                androidx.camera.core.ZoomState zoomState = camera.getCameraInfo().getZoomState().getValue();
+                if (zoomState != null) {
+                    float minZoom = zoomState.getMinZoomRatio();
+                    float maxZoom = zoomState.getMaxZoomRatio();
+                    // Clamp zoom to valid range
+                    float clampedZoom = Math.max(minZoom, Math.min(zoom, maxZoom));
+                    currentConfig.zoomRatio = clampedZoom;
+                    camera.getCameraControl().setZoomRatio(clampedZoom);
+                    call.resolve();
+                } else {
+                    // Fallback if zoom state is not available
+                    currentConfig.zoomRatio = zoom;
+                    camera.getCameraControl().setZoomRatio(zoom);
+                    call.resolve();
+                }
+            } else {
+                call.reject("Camera not initialized");
             }
         });
-        call.resolve();
+    }
+
+    @PluginMethod
+    public void getAvailableZoomLevels(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            if (camera != null) {
+                androidx.camera.core.ZoomState zoomState = camera.getCameraInfo().getZoomState().getValue();
+                if (zoomState != null) {
+                    float minZoom = zoomState.getMinZoomRatio();
+                    float maxZoom = zoomState.getMaxZoomRatio();
+                    
+                    // Generate suggested preset levels based on device capabilities
+                    JSObject result = new JSObject();
+                    result.put("minZoom", minZoom);
+                    result.put("maxZoom", maxZoom);
+                    
+                    // Create preset levels array
+                    List<Float> presetLevels = new ArrayList<>();
+                    
+                    // Add ultra-wide if available (0.5x or 0.7x depending on device)
+                    if (minZoom < 1.0f) {
+                        // Round to nearest common value (0.5 or 0.7)
+                        float ultraWide = minZoom;
+                        if (minZoom > 0.6f && minZoom < 0.8f) {
+                            ultraWide = 0.7f;
+                        } else if (minZoom < 0.6f) {
+                            ultraWide = 0.5f;
+                        }
+                        presetLevels.add(ultraWide);
+                    }
+                    
+                    // Always add 1x
+                    presetLevels.add(1.0f);
+                    
+                    // Add telephoto presets based on max zoom
+                    if (maxZoom >= 2.0f) {
+                        presetLevels.add(2.0f);
+                    }
+                    if (maxZoom >= 3.0f) {
+                        presetLevels.add(3.0f);
+                    }
+                    if (maxZoom >= 5.0f) {
+                        presetLevels.add(5.0f);
+                    }
+                    if (maxZoom >= 10.0f) {
+                        presetLevels.add(10.0f);
+                    }
+                    
+                    // Convert to JSON array
+                    JSONArray presetArray = new JSONArray();
+                    for (Float level : presetLevels) {
+                        presetArray.put(level);
+                    }
+                    result.put("presetLevels", presetArray);
+                    
+                    call.resolve(result);
+                } else {
+                    // Fallback if zoom state is not available
+                    JSObject result = new JSObject();
+                    result.put("minZoom", 1.0f);
+                    result.put("maxZoom", 4.0f);
+                    result.put("presetLevels", new JSONArray(Arrays.asList(1.0f, 2.0f, 3.0f, 4.0f)));
+                    call.resolve(result);
+                }
+            } else {
+                call.reject("Camera not initialized");
+            }
+        });
     }
 
     @PluginMethod
@@ -289,6 +391,181 @@ public class CameraMultiCapturePlugin extends Plugin {
         } catch (Exception e) {
             call.reject("Failed to switch camera: " + e.getMessage(), e);
         }
+    }
+
+    @PluginMethod
+    public void getAvailableCameras(PluginCall call) {
+        JSObject result = new JSObject();
+        
+        try {
+            boolean hasUltrawide = false;
+            boolean hasWide = false;
+            boolean hasTelephoto = false;
+            float ultrawideZoomFactor = 0.5f;
+            float wideZoomFactor = 1.0f;
+            float telephotoZoomFactor = 2.0f;
+            
+            // Check current camera's capabilities
+            if (camera != null && camera.getCameraInfo() != null) {
+                androidx.camera.core.ZoomState zoomState = camera.getCameraInfo().getZoomState().getValue();
+                if (zoomState != null) {
+                    float minZoom = zoomState.getMinZoomRatio();
+                    float maxZoom = zoomState.getMaxZoomRatio();
+                    
+                    Log.d("CameraMultiCapture", "Current camera zoom range: " + minZoom + " - " + maxZoom);
+                    
+                    // Detect ultrawide by minimum zoom < 1.0
+                    if (minZoom < 1.0f) {
+                        hasUltrawide = true;
+                        ultrawideZoomFactor = minZoom;
+                        Log.d("CameraMultiCapture", "Ultrawide detected with zoom factor: " + ultrawideZoomFactor);
+                    }
+                    
+                    // Wide camera is always available
+                    hasWide = true;
+                    
+                    // Try to get more detailed camera info using Camera2 interop
+                    try {
+                        Camera2CameraInfo camera2Info = Camera2CameraInfo.from(camera.getCameraInfo());
+                        String cameraId = camera2Info.getCameraId();
+                        CameraManager cameraManager = (CameraManager) getContext().getSystemService(Context.CAMERA_SERVICE);
+                        CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(cameraId);
+                        
+                        // Check for physical camera IDs (multi-camera systems)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            int[] capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
+                            if (capabilities != null) {
+                                for (int capability : capabilities) {
+                                    if (capability == CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA) {
+                                        // This is a logical camera that combines multiple physical cameras
+                                        Log.d("CameraMultiCapture", "Logical multi-camera detected");
+                                        
+                                        // More accurate telephoto detection
+                                        if (maxZoom >= 5.0f) {
+                                            hasTelephoto = true;
+                                            // Detect common telephoto zoom factors
+                                            if (maxZoom >= 20.0f) {
+                                                telephotoZoomFactor = 3.0f;
+                                            } else if (maxZoom >= 10.0f) {
+                                                telephotoZoomFactor = 2.0f;
+                                            } else {
+                                                telephotoZoomFactor = 2.0f;
+                                            }
+                                            Log.d("CameraMultiCapture", "Telephoto detected with zoom factor: " + telephotoZoomFactor);
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            // Fallback for older devices
+                            if (maxZoom >= 8.0f) {
+                                hasTelephoto = true;
+                                telephotoZoomFactor = 2.0f;
+                            }
+                        }
+                        
+                        // Get focal lengths if available
+                        float[] focalLengths = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+                        if (focalLengths != null && focalLengths.length > 0) {
+                            Log.d("CameraMultiCapture", "Available focal lengths: " + Arrays.toString(focalLengths));
+                        }
+                        
+                    } catch (Exception e) {
+                        Log.e("CameraMultiCapture", "Error getting Camera2 info: " + e.getMessage());
+                        // Fallback to simple detection
+                        if (maxZoom >= 8.0f) {
+                            hasTelephoto = true;
+                            telephotoZoomFactor = 2.0f;
+                        }
+                    }
+                }
+            } else if (cameraProvider != null) {
+                // Camera not initialized, try to check available cameras
+                List<androidx.camera.core.CameraInfo> cameraInfoList = cameraProvider.getAvailableCameraInfos();
+                for (androidx.camera.core.CameraInfo cameraInfo : cameraInfoList) {
+                    androidx.camera.core.ZoomState zoomState = cameraInfo.getZoomState().getValue();
+                    if (zoomState != null) {
+                        float minZoom = zoomState.getMinZoomRatio();
+                        float maxZoom = zoomState.getMaxZoomRatio();
+                        
+                        if (minZoom < 1.0f && !hasUltrawide) {
+                            hasUltrawide = true;
+                            ultrawideZoomFactor = minZoom;
+                        }
+                        
+                        hasWide = true;
+                        
+                        if (maxZoom >= 8.0f && !hasTelephoto) {
+                            hasTelephoto = true;
+                        }
+                    }
+                }
+            } else {
+                // No camera provider, return defaults
+                hasWide = true;
+            }
+            
+            result.put("hasUltrawide", hasUltrawide);
+            result.put("hasWide", hasWide);
+            result.put("hasTelephoto", hasTelephoto);
+            
+            if (hasUltrawide) {
+                result.put("ultrawideZoomFactor", ultrawideZoomFactor);
+            }
+            result.put("wideZoomFactor", wideZoomFactor);
+            if (hasTelephoto) {
+                result.put("telephotoZoomFactor", telephotoZoomFactor);
+            }
+            
+            Log.d("CameraMultiCapture", "Camera detection result: ultrawide=" + hasUltrawide + 
+                    ", wide=" + hasWide + ", telephoto=" + hasTelephoto);
+            
+        } catch (Exception e) {
+            Log.e("CameraMultiCapture", "Error in getAvailableCameras: " + e.getMessage());
+            // Fallback to simple detection
+            result.put("hasUltrawide", false);
+            result.put("hasWide", true);
+            result.put("hasTelephoto", false);
+            result.put("wideZoomFactor", 1.0);
+        }
+        
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void switchToPhysicalCamera(PluginCall call) {
+        Float zoomFactor = call.getFloat("zoomFactor");
+        if (zoomFactor == null) {
+            call.reject("Missing zoomFactor parameter");
+            return;
+        }
+        
+        if (camera == null) {
+            call.reject("Camera not initialized");
+            return;
+        }
+        
+        Log.d("CameraMultiCapture", "Switching to physical camera with zoom factor: " + zoomFactor);
+        
+        // For CameraX, we primarily use zoom to switch between lenses
+        // The system automatically switches physical cameras based on zoom level
+        getActivity().runOnUiThread(() -> {
+            try {
+                camera.getCameraControl().setZoomRatio(zoomFactor);
+                
+                // Log the actual zoom after setting
+                androidx.camera.core.ZoomState zoomState = camera.getCameraInfo().getZoomState().getValue();
+                if (zoomState != null) {
+                    Log.d("CameraMultiCapture", "Zoom set to: " + zoomState.getZoomRatio());
+                }
+                
+                call.resolve();
+            } catch (Exception e) {
+                Log.e("CameraMultiCapture", "Failed to switch camera: " + e.getMessage());
+                call.reject("Failed to switch camera: " + e.getMessage(), e);
+            }
+        });
     }
 
     @PluginMethod

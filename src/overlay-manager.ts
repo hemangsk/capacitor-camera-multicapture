@@ -29,6 +29,8 @@ export class OverlayManager {
   private isActive = false;
   private resolvePromise: ((value: CameraOverlayResult) => void) | null = null;
   private bodyBackgroundColor: string | null = null;
+  private zoomContainer: HTMLElement | null = null;
+  private zoomConfig: any = null;
 
   constructor(plugin: CameraMultiCapturePlugin, options: CameraOverlayUIOptions) {
     this.options = options;
@@ -65,6 +67,11 @@ export class OverlayManager {
           this.options.quality ?? 90,
         );
 
+        // Create zoom buttons after camera init
+        if (this.zoomContainer && this.zoomConfig) {
+          await this.createZoomButtonsAfterInit();
+        }
+
       } catch (error) {
         console.error('Failed to initialize camera overlay', error);
         resolve({ images: [], cancelled: true });
@@ -100,7 +107,6 @@ export class OverlayManager {
     // Create bottom grid cells
     const bottomCells = createBottomGridCells(positions.bottomGrid);
 
-    // Create gallery
     const galleryElement = createGallery(this.overlayElement);
     if (this.options.maxCaptures === 1) {
       galleryElement.style.display = 'none';
@@ -161,8 +167,14 @@ export class OverlayManager {
       this.createSwitchCameraButton(buttons.switchCamera, positions.topRight);
     }
 
+    if (buttons.flash) {
+      this.createFlashButton(buttons.flash, positions.topLeft);
+    }
+
     if (buttons.zoom) {
-      this.createZoomButtons(buttons.zoom, positions.zoomRow);
+      // Store zoom config and container for later creation
+      this.zoomConfig = buttons.zoom;
+      this.zoomContainer = positions.zoomRow;
     }
 
     window.addEventListener('orientationchange', () => {
@@ -187,33 +199,109 @@ export class OverlayManager {
     container.appendChild(switchBtn);
   }
 
-  /**
-   * Creates zoom level buttons
+   /**
+   * Creates zoom buttons after camera initialization
    */
-  private createZoomButtons(config: any, container: HTMLElement): void {
-    const levels = config.levels || [1, 2, 3, 4];
+   private async createZoomButtonsAfterInit(): Promise<void> {
+    if (!this.zoomContainer || !this.zoomConfig) return;
+    
+    let smartZoomLevels: { level: number; isPhysicalCamera: boolean }[];
+    
+    try {
+      // Get smart zoom levels that include physical camera switches
+      smartZoomLevels = await this.cameraController.getSmartZoomLevels();
+    } catch (error) {
+      // Use fallback zoom levels
+      const fallbackLevels = this.zoomConfig.levels || [1, 2, 3, 4];
+      smartZoomLevels = fallbackLevels.map((level: number) => ({ level, isPhysicalCamera: false }));
+    }
+    
+    // Create zoom buttons with the smart levels
+    this.createZoomButtons(smartZoomLevels, this.zoomContainer);
+  }
+
+
+  /**
+   * Creates smart zoom buttons with physical camera indication
+   */
+  private createZoomButtons(levels: { level: number; isPhysicalCamera: boolean }[], container: HTMLElement): void {
+    const config = this.zoomConfig || {};
+    
+    let currentZoomLevel = 1; // Default zoom level
+    const zoomButtons: HTMLButtonElement[] = [];
 
     // Add zoom buttons in a horizontal row
-    levels.forEach((level: number) => {
+    levels.forEach((zoomInfo) => {
+      const level: any = zoomInfo.level;
+      
+      // Format zoom level display
+      let displayText: string;
+      if (level === 1) {
+        // Special case for 1x - always show as "1x"
+        displayText = '1x';
+      } else if (level % 1 === 0) {
+        // Show as integer for whole numbers (2x, 3x, etc.)
+        displayText = `${Math.round(level)}x`;
+      } else {
+        // Round to one decimal place for fractional numbers (0.673434 -> 0.7x)
+        displayText = `${Math.round(level * 10) / 10}x`;
+      }
+      
       // Create a button for each zoom level
-      const zoomBtn = createButton({...config, text: `${level}x`});
+      const zoomBtn = createButton({...config, text: displayText});
 
       // Make zoom buttons smaller and more compact
       Object.assign(zoomBtn.style, {
-        padding: '5px',
-        minWidth: '30px',
+        padding: '5px 8px',
+        minWidth: '40px',
         minHeight: '30px',
-        margin: '0 3px'  // Add horizontal spacing between zoom buttons
+        margin: '0 3px',
+        fontSize: '14px',
+        fontWeight: '500',
+        transition: 'all 0.2s ease'
       });
+
+      // Highlight the default 1x zoom
+      if (level === 1) {
+        Object.assign(zoomBtn.style, {
+          backgroundColor: '#ffffff',
+          color: '#000000',
+          fontWeight: '700'
+        });
+      }
 
       zoomBtn.onclick = async () => {
         try {
-          await this.cameraController.setZoom(level);
+          // Use smart zoom to handle physical camera switching
+          await this.cameraController.performSmartZoom(level);
+          currentZoomLevel = level;
+          
+          // Update button states
+          zoomButtons.forEach((btn, btnIndex) => {
+            const btnLevel = levels[btnIndex].level;
+            
+            if (btnLevel === currentZoomLevel) {
+              // Highlight selected button
+              Object.assign(btn.style, {
+                backgroundColor: '#ffffff',
+                color: '#000000',
+                fontWeight: '700'
+              });
+            } else {
+              // Reset non-selected buttons
+              Object.assign(btn.style, {
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                color: '#ffffff',
+                fontWeight: '500'
+              });
+            }
+          });
         } catch (error) {
           console.error(`Failed to set zoom to ${level}x`, error);
         }
       };
 
+      zoomButtons.push(zoomBtn);
       container.appendChild(zoomBtn);
     });
   }
@@ -289,6 +377,8 @@ export class OverlayManager {
     this.overlayElement = null;
     this.galleryController = null;
     this.isActive = false;
+    this.zoomContainer = null;
+    this.zoomConfig = null;
     if (this.bodyBackgroundColor) {
       document.body.style.backgroundColor = this.bodyBackgroundColor;
     }

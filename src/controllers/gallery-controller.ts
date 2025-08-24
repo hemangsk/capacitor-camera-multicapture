@@ -75,4 +75,5 @@ export class GalleryController {
       this.galleryElement.appendChild(thumbnailContainer);
     });
   }
+
 }

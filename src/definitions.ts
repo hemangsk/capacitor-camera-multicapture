@@ -139,6 +139,34 @@ export interface CameraMultiCapturePlugin {
   setZoom(options: { zoom: number }): Promise<void>;
 
   /**
+   * Gets the available zoom levels supported by the current camera.
+   * Returns minimum and maximum zoom ratios, and suggested preset levels.
+   */
+  getAvailableZoomLevels(): Promise<{
+    minZoom: number;
+    maxZoom: number;
+    presetLevels: number[];
+  }>;
+
+  /**
+   * Gets information about available physical cameras
+   */
+  getAvailableCameras(): Promise<{
+    hasUltrawide: boolean;
+    hasWide: boolean;
+    hasTelephoto: boolean;
+    ultrawideZoomFactor?: number;
+    wideZoomFactor: number;
+    telephotoZoomFactor?: number;
+  }>;
+
+  /**
+   * Switches to a specific physical camera based on zoom factor
+   * @param zoomFactor The target zoom factor (e.g., 0.5 for ultrawide, 1.0 for wide, 2.0+ for telephoto)
+   */
+  switchToPhysicalCamera(options: { zoomFactor: number }): Promise<void>;
+
+  /**
    * Updates the camera preview rectangle dimensions.
    * Call this when the container size changes (e.g., orientation change).
    */
