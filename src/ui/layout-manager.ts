@@ -194,6 +194,28 @@ export function createGallery(overlay: HTMLElement): HTMLElement {
   
   gallery.style.setProperty('-ms-overflow-style', 'none');
   
+  // Function to update justify-content based on content overflow
+  const updateJustification = () => {
+    if (gallery.scrollWidth > gallery.clientWidth) {
+      gallery.style.justifyContent = 'flex-start';
+    } else {
+      gallery.style.justifyContent = 'center';
+    }
+  };
+  
+  // Create a MutationObserver to watch for content changes
+  const observer = new MutationObserver(updateJustification);
+  observer.observe(gallery, { childList: true, subtree: true });
+  
+  // Also update on resize (with fallback for browsers without ResizeObserver)
+  if (typeof (window as any).ResizeObserver !== 'undefined') {
+    const resizeObserver = new (window as any).ResizeObserver(updateJustification);
+    resizeObserver.observe(gallery);
+  } else {
+    // Fallback: use window resize event
+    window.addEventListener('resize', updateJustification);
+  }
+  
   gallery.addEventListener('mouseenter', () => {
     gallery.style.overflow = 'auto';
   });
