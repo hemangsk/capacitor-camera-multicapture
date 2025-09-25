@@ -22,6 +22,7 @@ export interface ButtonStyle {
   size?: number;
   activeColor?: string;
   border?: string;
+  opacity?: number; // Opacity value from 0 to 1
 }
 
 export interface CameraOverlayButtons {
@@ -79,6 +80,8 @@ export interface CameraOverlayOptions {
   autoFocus?: boolean;
   flash?: 'on' | 'off' | 'auto';
   maxCaptures?: number;
+  flashAutoModeEnabled?: boolean;
+  showShotCounter?: boolean;
 }
 
 
