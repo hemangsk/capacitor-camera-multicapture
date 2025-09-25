@@ -133,6 +133,42 @@ const result = await initialize({
 
 The plugin automatically detects available physical cameras (ultrawide, wide, telephoto) and displays appropriate zoom buttons. The system seamlessly switches between physical cameras when you select certain zoom levels.
 
+#### Button Opacity and Shot Counter
+
+```typescript
+// Semi-transparent buttons with shot counter
+const result = await initialize({
+  containerId: 'camera-container',
+  quality: 90,
+  showShotCounter: true,  // Display shot count
+  buttons: {
+    capture: {
+      style: {
+        backgroundColor: '#ffffff',
+        opacity: 0.8  // 80% opacity
+      }
+    },
+    done: {
+      style: {
+        backgroundColor: '#28a745',
+        opacity: 0.9  // 90% opacity
+      }
+    }
+  }
+});
+```
+
+#### Flash Auto Mode
+
+```typescript
+// Enable flash auto mode
+const result = await initialize({
+  containerId: 'camera-container',
+  flashAutoModeEnabled: true,  // Allow auto flash mode
+  flash: 'auto'  // Start with auto flash
+});
+```
+
 ## API
 
 <docgen-index>
@@ -308,6 +344,8 @@ Structure for image data returned by the camera
 | **`zoom`**           | <code>number</code>                                                   |
 | **`autoFocus`**      | <code>boolean</code>                                                  |
 | **`maxCaptures`**    | <code>number</code>                                                   |
+| **`flashAutoModeEnabled`** | <code>boolean</code>                                             |
+| **`showShotCounter`** | <code>boolean</code>                                                  |
 
 
 #### CameraOverlayButtons
@@ -332,6 +370,7 @@ Structure for image data returned by the camera
 | **`size`**            | <code>number</code> |
 | **`activeColor`**     | <code>string</code> |
 | **`border`**          | <code>string</code> |
+| **`opacity`**         | <code>number</code> |
 
 
 #### CameraPreviewRect
