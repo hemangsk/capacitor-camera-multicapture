@@ -6,7 +6,7 @@ import { CameraController } from './controllers/camera-controller';
 import { GalleryController } from './controllers/gallery-controller';
 import { merge } from 'lodash';
 import { defaultButtons } from './ui/default-styles';
-import { createButton } from './ui/ui-factory';
+import { createButton, createShotCounter, updateShotCounter, setButtonIcon } from './ui/ui-factory';
 import {
   createOverlayContainer,
   createPositionContainers,
@@ -17,6 +17,7 @@ import type {
   ButtonsConfig,
   CameraOverlayUIOptions,
 } from './types/ui-types';
+
 
 /**
  * Main class to manage camera overlay UI
@@ -31,6 +32,8 @@ export class OverlayManager {
   private bodyBackgroundColor: string | null = null;
   private zoomContainer: HTMLElement | null = null;
   private zoomConfig: any = null;
+  private shotCounter: HTMLElement | null = null;
+  private shotCount: number = 0;
 
   constructor(plugin: CameraMultiCapturePlugin, options: CameraOverlayUIOptions) {
     this.options = options;
@@ -113,7 +116,15 @@ export class OverlayManager {
     }
     this.galleryController = new GalleryController(
       galleryElement,
-      this.options.thumbnailStyle
+      this.options.thumbnailStyle,
+      (images) => {
+        if (this.options.showShotCounter) {
+          this.shotCount = images.length;
+          if (this.shotCounter) {
+            updateShotCounter(this.shotCounter, this.shotCount);
+          }
+        }
+      }
     );
 
     // Merge default buttons with user-provided options
@@ -124,6 +135,13 @@ export class OverlayManager {
 
     // Create buttons
     const captureBtn = createButton(buttons.capture);
+    
+    // Create shot counter only if enabled
+    if (this.options.showShotCounter) {
+      this.shotCounter = createShotCounter();
+    }
+    
+    // Place capture button back in center (no container needed)
     bottomCells.middle.appendChild(captureBtn);
 
     captureBtn.onclick = async () => {
@@ -131,6 +149,14 @@ export class OverlayManager {
         const imageData = await this.cameraController.captureImage();
         if (imageData && this.galleryController) {
           this.galleryController.addImage(imageData);
+          
+          // Increment shot counter and update UI (only if counter is enabled)
+          if (this.options.showShotCounter) {
+            this.shotCount++;
+            if (this.shotCounter) {
+              updateShotCounter(this.shotCounter, this.shotCount);
+            }
+          }
           
           // Check if we've reached maxCaptures limit
           if (this.options.maxCaptures && 
@@ -149,11 +175,33 @@ export class OverlayManager {
     // Only show Done button if not in single capture mode
     if (this.options.maxCaptures !== 1) {
       const doneBtn = createButton(buttons.done);
-      bottomCells.right.appendChild(doneBtn);
+      
+      // If counter is enabled, create a container with counter and done button
+      if (this.shotCounter) {
+        const rightContainer = document.createElement('div');
+        Object.assign(rightContainer.style, {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '15px' // Space between counter and done button
+        });
+        
+        rightContainer.appendChild(this.shotCounter);
+        rightContainer.appendChild(doneBtn);
+        bottomCells.right.appendChild(rightContainer);
+      } else {
+        // No counter, just add done button directly
+        bottomCells.right.appendChild(doneBtn);
+      }
 
       doneBtn.onclick = () => {
         this.completeCapture(false);
       };
+    } else {
+      // Single capture mode - if counter is enabled, show it in the right cell
+      if (this.shotCounter) {
+        bottomCells.right.appendChild(this.shotCounter);
+      }
     }
 
     const cancelBtn = createButton(buttons.cancel);
@@ -315,27 +363,31 @@ export class OverlayManager {
       icon: config.offIcon // Start with off icon
     });
 
-    const updateFlashIcon = (mode: 'on' | 'off' | 'auto') => {
+    const updateFlashIcon = async (mode: 'on' | 'off' | 'auto') => {
       let icon: string;
       switch (mode) {
         case 'on':
           icon = config.onIcon;
           break;
         case 'auto':
-          icon = config.autoIcon;
+          // Only show auto icon if auto mode is enabled, otherwise show off icon
+          icon = this.cameraController.isFlashAutoModeEnabled() ? config.autoIcon : config.offIcon;
           break;
         case 'off':
         default:
           icon = config.offIcon;
           break;
       }
-      flashBtn.innerHTML = icon;
+      // Only update icon if one is provided
+      if (icon) {
+        await setButtonIcon(flashBtn, icon);
+      }
     };
 
     flashBtn.onclick = async () => {
       try {
         const newMode = await this.cameraController.toggleFlash();
-        updateFlashIcon(newMode);
+        await updateFlashIcon(newMode);
       } catch (error) {
         console.error('Failed to toggle flash', error);
       }
@@ -379,6 +431,8 @@ export class OverlayManager {
     this.isActive = false;
     this.zoomContainer = null;
     this.zoomConfig = null;
+    this.shotCounter = null;
+    this.shotCount = 0; // Reset shot count for next session
     if (this.bodyBackgroundColor) {
       document.body.style.backgroundColor = this.bodyBackgroundColor;
     }

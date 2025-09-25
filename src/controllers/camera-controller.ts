@@ -22,6 +22,7 @@ export class CameraController {
   private plugin: CameraMultiCapturePlugin;
   private options: CameraOverlayUIOptions;
   private flashMode: 'on' | 'off' | 'auto' = 'off';
+  private flashAutoModeEnabled: boolean = true;
   private availableCameras: {
     hasUltrawide: boolean;
     hasWide: boolean;
@@ -34,6 +35,7 @@ export class CameraController {
   constructor(plugin: CameraMultiCapturePlugin, options: CameraOverlayUIOptions) {
     this.plugin = plugin;
     this.options = options;
+    this.flashAutoModeEnabled = options.flashAutoModeEnabled ?? true;
   }
   
   /**
@@ -178,24 +180,48 @@ export class CameraController {
   }
 
   /**
-   * Toggles flash mode between off, on, and auto
+   * Toggles flash mode between off, on, and optionally auto
    */
   async toggleFlash(): Promise<'on' | 'off' | 'auto'> {
     let newMode: 'on' | 'off' | 'auto';
-    switch (this.flashMode) {
-      case 'off':
-        newMode = 'on';
-        break;
-      case 'on':
-        newMode = 'auto';
-        break;
-      case 'auto':
-      default:
-        newMode = 'off';
-        break;
+    
+    if (this.flashAutoModeEnabled) {
+      // 3-mode cycle: off → on → auto → off
+      switch (this.flashMode) {
+        case 'off':
+          newMode = 'on';
+          break;
+        case 'on':
+          newMode = 'auto';
+          break;
+        case 'auto':
+        default:
+          newMode = 'off';
+          break;
+      }
+    } else {
+      // 2-mode cycle: off → on → off
+      switch (this.flashMode) {
+        case 'off':
+          newMode = 'on';
+          break;
+        case 'on':
+        case 'auto': // If somehow in auto mode, go to off
+        default:
+          newMode = 'off';
+          break;
+      }
     }
+    
     await this.setFlash(newMode);
     return newMode;
+  }
+
+  /**
+   * Gets whether auto mode is enabled
+   */
+  isFlashAutoModeEnabled(): boolean {
+    return this.flashAutoModeEnabled;
   }
 
   /**
