@@ -30,7 +30,9 @@ export const initialize = (options: CameraOverlayOptions): Promise<CameraOverlay
     quality: options.quality,
     thumbnailStyle: options.thumbnailStyle,
     buttons: convertButtonsConfig(options.buttons),
-    maxCaptures: options.maxCaptures
+    maxCaptures: options.maxCaptures,
+    flashAutoModeEnabled: options.flashAutoModeEnabled,
+    showShotCounter: options.showShotCounter ?? true // Default to true for backward compatibility
   };
   
   const overlayManager = new OverlayManager(plugin, uiOptions);

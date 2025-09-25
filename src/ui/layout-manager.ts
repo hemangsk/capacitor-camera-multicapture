@@ -153,7 +153,8 @@ export function createBottomGridCells(bottomGrid: HTMLElement): BottomGridCells 
   Object.assign(cells.middle.style, {
     display: 'flex',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    position: 'relative'
   });
   
   Object.assign(cells.right.style, {
