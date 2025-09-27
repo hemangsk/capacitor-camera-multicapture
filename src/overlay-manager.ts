@@ -183,7 +183,7 @@ export class OverlayManager {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '15px' // Space between counter and done button
+          gap: '0.625rem'
         });
         
         rightContainer.appendChild(this.shotCounter);
