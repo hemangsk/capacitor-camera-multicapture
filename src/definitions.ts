@@ -22,7 +22,9 @@ export interface ButtonStyle {
   size?: number;
   activeColor?: string;
   border?: string;
-  opacity?: number; // Opacity value from 0 to 1
+  opacity?: number;
+  boxShadow?: string;
+  filter?: string; // CSS filter property (e.g., blur, brightness, contrast, etc.)
 }
 
 export interface CameraOverlayButtons {
