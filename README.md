@@ -169,6 +169,62 @@ const result = await initialize({
 });
 ```
 
+#### Advanced Button Styling with Box Shadows and Filters
+
+```typescript
+// Enhanced button styling with shadows and filters
+const result = await initialize({
+  containerId: 'camera-container',
+  quality: 90,
+  buttons: {
+    capture: {
+      style: {
+        backgroundColor: '#ffffff',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1)',
+        filter: 'brightness(1.1)'
+      }
+    },
+    done: {
+      style: {
+        backgroundColor: '#28a745',
+        boxShadow: '0 2px 8px rgba(40, 167, 69, 0.3)',
+        filter: 'saturate(1.2)'
+      }
+    },
+    cancel: {
+      style: {
+        backgroundColor: '#dc3545',
+        boxShadow: '0 2px 8px rgba(220, 53, 69, 0.3)',
+        filter: 'contrast(1.1)'
+      }
+    },
+    switchCamera: {
+      style: {
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.3)',
+        filter: 'blur(0.5px) brightness(1.1)'
+      }
+    }
+  }
+});
+```
+
+**Available Filter Effects:**
+- `blur(2px)` - Blur effect
+- `brightness(1.2)` - Brightness adjustment (1.0 = normal)
+- `contrast(1.5)` - Contrast enhancement
+- `grayscale(100%)` - Grayscale effect
+- `saturate(1.3)` - Saturation boost
+- `hue-rotate(90deg)` - Hue rotation
+- `drop-shadow(0 2px 4px rgba(0,0,0,0.2))` - Drop shadow alternative
+- Multiple filters: `brightness(1.1) contrast(1.2) saturate(1.3)`
+
+**Box Shadow Examples:**
+- Subtle: `0 2px 4px rgba(0, 0, 0, 0.1)`
+- Prominent: `0 4px 12px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1)`
+- Colored: `0 4px 12px rgba(59, 130, 246, 0.4)`
+- Inset: `inset 0 1px 0 rgba(255, 255, 255, 0.2)`
+
 ## API
 
 <docgen-index>
@@ -371,6 +427,8 @@ Structure for image data returned by the camera
 | **`activeColor`**     | <code>string</code> |
 | **`border`**          | <code>string</code> |
 | **`opacity`**         | <code>number</code> |
+| **`boxShadow`**       | <code>string</code> |
+| **`filter`**          | <code>string</code> |
 
 
 #### CameraPreviewRect
