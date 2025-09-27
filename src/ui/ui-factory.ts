@@ -91,6 +91,8 @@ export function applyButtonStyle(element: HTMLButtonElement, style: ButtonStyle)
     color: style.color || '#000000',
     border: style.border || 'none',
     opacity: style.opacity !== undefined ? style.opacity.toString() : '1',
+    boxShadow: style.boxShadow || 'none',
+    filter: style.filter || 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
