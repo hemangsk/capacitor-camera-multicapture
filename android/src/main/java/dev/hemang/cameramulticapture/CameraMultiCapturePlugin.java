@@ -685,13 +685,17 @@ public class CameraMultiCapturePlugin extends Plugin {
 
         currentConfig.flashMode = flashModeInt;
 
-        // Rebuild camera session to apply flash settings
         getActivity().runOnUiThread(() -> {
             try {
-                bindCameraSession();
-                JSObject result = new JSObject();
-                result.put("flashMode", flashMode);
-                call.resolve(result);
+                if (imageCapture != null) {
+                    imageCapture.setFlashMode(flashModeInt);
+                    
+                    JSObject result = new JSObject();
+                    result.put("flashMode", flashMode);
+                    call.resolve(result);
+                } else {
+                    call.reject("ImageCapture not initialized");
+                }
             } catch (Exception e) {
                 call.reject("Failed to set flash mode: " + e.getMessage(), e);
             }
