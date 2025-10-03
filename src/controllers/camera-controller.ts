@@ -67,6 +67,12 @@ export class CameraController {
   async captureImage(): Promise<CameraImageData | undefined> {
     try {
       const result = await this.plugin.capture();
+      console.log('Capture result:', result);
+      
+      if (!result?.value?.uri) {
+        throw new Error('No URI returned from native capture');
+      }
+      
       result.value.webPath = Capacitor.convertFileSrc(result.value.uri);
       return result?.value;
     } catch (error) {
