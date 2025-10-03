@@ -2,6 +2,7 @@ import AVFoundation
 import Capacitor
 import Foundation
 import Photos
+import BackgroundTasks
 
 struct CameraConfig {
     var x: CGFloat
@@ -35,6 +36,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "switchToPhysicalCamera", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "queueBackgroundUpload", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getUploadStatus", returnType: CAPPluginReturnPromise),
     ]
 
     var captureSession: AVCaptureSession?
@@ -397,7 +400,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                 videoLayer.frame = previewView.bounds
                 
                 // Handle orientation changes - detect current device orientation if not provided
-                if !call.hasOption("rotation") {
+                if call.getInt("rotation") == nil {
                     let newOrientation: AVCaptureVideoOrientation
                     switch UIDevice.current.orientation {
                     case .portrait:
@@ -637,6 +640,268 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         
         call.resolve(["flashMode": modeString])
     }
+
+    @objc func queueBackgroundUpload(_ call: CAPPluginCall) {
+        guard let imageUri = call.getString("imageUri"),
+              let uploadEndpoint = call.getString("uploadEndpoint"),
+              let headers = call.getObject("headers") else {
+            call.reject("Missing required parameters")
+            return
+        }
+        
+        let formData = call.getObject("formData") ?? [:]
+        let method = call.getString("method") ?? "POST"
+        let deleteAfterUpload = call.getBool("deleteAfterUpload") ?? true // Default: true
+        let jobId = UUID().uuidString
+        
+        // Generate unique filename from imageUri or timestamp
+        let uniqueFileName = self.generateUniqueFileName(from: imageUri)
+        
+        // Store upload job for background processing
+        let uploadJob: [String: Any] = [
+            "jobId": jobId,
+            "imageUri": imageUri,
+            "uploadEndpoint": uploadEndpoint,
+            "headers": headers,
+            "formData": formData,
+            "method": method,
+            "fileName": uniqueFileName,
+            "deleteAfterUpload": deleteAfterUpload,
+            "status": "pending",
+            "createdAt": Date().timeIntervalSince1970
+        ]
+        
+        UserDefaults.standard.set(uploadJob, forKey: "uploadJob_\(jobId)")
+        
+        // Schedule proper background task
+        self.scheduleBackgroundUpload(jobId: jobId, uploadJob: uploadJob)
+        
+        call.resolve(["jobId": jobId])
+    }
+    
+    private func generateUniqueFileName(from imageUri: String) -> String {
+        // Extract filename from URI if possible
+        if let url = URL(string: imageUri) {
+            let pathExtension = url.pathExtension.isEmpty ? "jpg" : url.pathExtension
+            let baseName = url.deletingPathExtension().lastPathComponent
+            
+            // If we have a meaningful filename, use it with timestamp
+            if !baseName.isEmpty && baseName != "image" {
+                return "\(baseName)_\(Int(Date().timeIntervalSince1970)).\(pathExtension)"
+            }
+        }
+        
+        // Fallback to timestamp-based naming
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let randomId = UUID().uuidString.prefix(8)
+        return "photo_\(timestamp)_\(randomId).jpg"
+    }
+    
+    private func scheduleBackgroundUpload(jobId: String, uploadJob: [String: Any]) {
+        // iOS 13+ only - use modern BGTaskScheduler
+        if #available(iOS 13.0, *) {
+            let request = BGProcessingTaskRequest(identifier: "com.cameramulticapture.upload")
+            request.requiresNetworkConnectivity = true
+            request.requiresExternalPower = false
+            
+            do {
+                try BGTaskScheduler.shared.submit(request)
+                print("✅ Background upload task scheduled: \(jobId)")
+                
+                // Start immediate upload attempt
+                self.performHttpUpload(jobId: jobId, uploadJob: uploadJob)
+            } catch {
+                print("❌ Failed to schedule background task: \(error)")
+                // Fallback to immediate upload
+                self.performHttpUpload(jobId: jobId, uploadJob: uploadJob)
+            }
+        } else {
+            // iOS 12 and below - not supported, but still attempt immediate upload
+            print("⚠️ Background uploads require iOS 13+. Attempting immediate upload only.")
+            self.performHttpUpload(jobId: jobId, uploadJob: uploadJob)
+        }
+    }
+    
+    @objc func getUploadStatus(_ call: CAPPluginCall) {
+        guard let jobId = call.getString("jobId") else {
+            call.reject("Missing jobId parameter")
+            return
+        }
+        
+        if let uploadJob = UserDefaults.standard.dictionary(forKey: "uploadJob_\(jobId)") {
+            let status = uploadJob["status"] as? String ?? "failed"
+            var result: [String: Any] = ["status": status]
+            
+            if let error = uploadJob["error"] as? String {
+                result["error"] = error
+            }
+            
+            call.resolve(result)
+        } else {
+            call.resolve(["status": "failed", "error": "Job not found"])
+        }
+    }
+    
+    private func performHttpUpload(jobId: String, uploadJob: [String: Any]) {
+        guard let imageUri = uploadJob["imageUri"] as? String,
+              let uploadEndpoint = uploadJob["uploadEndpoint"] as? String,
+              let headers = uploadJob["headers"] as? [String: Any],
+              let method = uploadJob["method"] as? String else {
+            updateJobStatus(jobId: jobId, status: "failed", error: "Invalid job data")
+            return
+        }
+        
+        updateJobStatus(jobId: jobId, status: "uploading")
+        
+        guard let url = URL(string: uploadEndpoint),
+              let imageUrl = URL(string: imageUri) else {
+            updateJobStatus(jobId: jobId, status: "failed", error: "Invalid URLs")
+            return
+        }
+        
+        // 🚀 Move file I/O to background thread to prevent UI blocking
+        DispatchQueue.global(qos: .background).async {
+            do {
+                let imageData = try Data(contentsOf: imageUrl)
+                
+                var request = URLRequest(url: url)
+                request.httpMethod = method
+                request.timeoutInterval = 60
+                
+                // Add headers
+                for (key, value) in headers {
+                    if let stringValue = value as? String {
+                        request.setValue(stringValue, forHTTPHeaderField: key)
+                    }
+                }
+                
+                // Set body based on method
+                if method.uppercased() == "PUT" {
+                    // For PUT requests (Azure, S3), send raw image data
+                    request.httpBody = imageData
+                } else {
+                    // For POST requests, create multipart form data
+                    let boundary = UUID().uuidString
+                    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+                    
+                    var body = Data()
+                    
+                    // Add form data fields
+                    if let formData = uploadJob["formData"] as? [String: Any] {
+                        for (key, value) in formData {
+                            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+                            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
+                            body.append("\(value)\r\n".data(using: .utf8)!)
+                        }
+                    }
+                    
+                    // Add image file with unique filename
+                    let fileName = uploadJob["fileName"] as? String ?? "photo_\(Int(Date().timeIntervalSince1970)).jpg"
+                    body.append("--\(boundary)\r\n".data(using: .utf8)!)
+                    body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+                    body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+                    body.append(imageData)
+                    body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+                    
+                    request.httpBody = body
+                }
+                
+                // Perform upload
+                let task = URLSession.shared.dataTask(with: request) { data, response, error in
+                    if let error = error {
+                        self.updateJobStatus(jobId: jobId, status: "failed", error: error.localizedDescription)
+                        return
+                    }
+                    
+                    if let httpResponse = response as? HTTPURLResponse {
+                        if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
+                            self.updateJobStatus(jobId: jobId, status: "completed")
+                            
+                            // 🚀 Clean up file after successful upload (if enabled)
+                            if let deleteAfterUpload = uploadJob["deleteAfterUpload"] as? Bool, deleteAfterUpload,
+                               let imageUri = uploadJob["imageUri"] as? String,
+                               let imageUrl = URL(string: imageUri) {
+                                do {
+                                    try FileManager.default.removeItem(at: imageUrl)
+                                    print("✅ Cleaned up file after successful upload: \(imageUri)")
+                                } catch {
+                                    print("⚠️ Failed to clean up file: \(error.localizedDescription)")
+                                }
+                            }
+                            
+                            // Clean up completed job after some time
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 300) { // 5 minutes
+                                UserDefaults.standard.removeObject(forKey: "uploadJob_\(jobId)")
+                            }
+                        } else {
+                            self.updateJobStatus(jobId: jobId, status: "failed", error: "HTTP \(httpResponse.statusCode)")
+                        }
+                    }
+                }
+                
+                task.resume()
+                
+            } catch {
+                self.updateJobStatus(jobId: jobId, status: "failed", error: error.localizedDescription)
+            }
+        }
+    }
+    
+    private func updateJobStatus(jobId: String, status: String, error: String? = nil) {
+        var uploadJob = UserDefaults.standard.dictionary(forKey: "uploadJob_\(jobId)") ?? [:]
+        uploadJob["status"] = status
+        if let error = error {
+            uploadJob["error"] = error
+        }
+        UserDefaults.standard.set(uploadJob, forKey: "uploadJob_\(jobId)")
+    }
+    
+    // MARK: - Thumbnail Generation
+    
+    /**
+     * Generate thumbnail using native iOS APIs
+     * Uses UIImage scaling with UIGraphicsImageRenderer for optimal performance
+     */
+    func generateThumbnail(from imageData: Data, size: CGFloat) -> String? {
+        guard let originalImage = UIImage(data: imageData) else {
+            return nil
+        }
+        
+        // Calculate thumbnail size maintaining aspect ratio (center crop)
+        let thumbnailSize = CGSize(width: size, height: size)
+        
+        // Use UIGraphicsImageRenderer for efficient thumbnail generation
+        let renderer = UIGraphicsImageRenderer(size: thumbnailSize)
+        
+        let thumbnail = renderer.image { context in
+            // Calculate scaling and cropping
+            let originalSize = originalImage.size
+            let scale = max(thumbnailSize.width / originalSize.width, thumbnailSize.height / originalSize.height)
+            
+            let scaledSize = CGSize(
+                width: originalSize.width * scale,
+                height: originalSize.height * scale
+            )
+            
+            let drawRect = CGRect(
+                x: (thumbnailSize.width - scaledSize.width) / 2,
+                y: (thumbnailSize.height - scaledSize.height) / 2,
+                width: scaledSize.width,
+                height: scaledSize.height
+            )
+            
+            originalImage.draw(in: drawRect)
+        }
+        
+        // Convert to JPEG data with compression
+        guard let thumbnailData = thumbnail.jpegData(compressionQuality: 0.85) else {
+            return nil
+        }
+        
+        // Convert to Base64 data URI
+        let base64String = thumbnailData.base64EncodedString()
+        return "data:image/jpeg;base64,\(base64String)"
+    }
 }
 
 class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
@@ -664,24 +929,31 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
             return
         }
         
-        // Write to temporary file first
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileName = UUID().uuidString + ".jpg"
-        let fileURL = tempDir.appendingPathComponent(fileName)
-        
-        do {
-            try data.write(to: fileURL)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let tempDir = FileManager.default.temporaryDirectory
+            let fileName = UUID().uuidString + ".jpg"
+            let fileURL = tempDir.appendingPathComponent(fileName)
             
-            let base64 = data.base64EncodedString()
-            let base64Data = "data:image/jpeg;base64," + base64
-            
-            var imageData = [String: String]()
-            imageData["uri"] = fileURL.absoluteString
-            imageData["base64"] = base64Data
-            
-            call.resolve(["value": imageData])
-        } catch {
-            call.reject("Failed to process image: \(error.localizedDescription)")
+            do {
+                try data.write(to: fileURL)
+                
+                var imageData = [String: String]()
+                imageData["uri"] = fileURL.absoluteString
+                
+                if let thumbnailDataUri = self.plugin?.generateThumbnail(from: data, size: 200) {
+                    imageData["thumbnail"] = thumbnailDataUri
+                } else {
+                    imageData["thumbnail"] = ""
+                }
+                
+                DispatchQueue.main.async {
+                    self.call.resolve(["value": imageData])
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.call.reject("Failed to process image: \(error.localizedDescription)")
+                }
+            }
         }
     }
 }

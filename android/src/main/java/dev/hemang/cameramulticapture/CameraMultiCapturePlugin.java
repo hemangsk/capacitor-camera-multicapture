@@ -51,6 +51,11 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.json.JSONArray;
+import androidx.work.*;
+import java.util.concurrent.TimeUnit;
+import java.util.UUID;
+import android.net.Uri;
+import java.io.File;
 
 @CapacitorPlugin(
     name = "CameraMultiCapture",
@@ -250,10 +255,13 @@ public class CameraMultiCapturePlugin extends Plugin {
                             Uri uri = Uri.fromFile(photoFile);
                             imageData.put("uri", uri.toString());
                             
-                            byte[] bytes = java.nio.file.Files.readAllBytes(photoFile.toPath());
-                            String base64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
-                            String base64Data = "data:image/jpeg;base64," + base64;
-                            imageData.put("base64", base64Data);
+                            String thumbnailBase64 = ThumbnailGenerator.generateThumbnail(photoFile);
+                            if (thumbnailBase64 != null) {
+                                imageData.put("thumbnail", thumbnailBase64);
+                            } else {
+                                Log.w("CameraMultiCapture", "Thumbnail generation failed");
+                                imageData.put("thumbnail", "");
+                            }
                             
                             result.put("value", imageData);
                         } catch (Exception e) {
@@ -375,6 +383,125 @@ public class CameraMultiCapturePlugin extends Plugin {
                 call.reject("Camera not initialized");
             }
         });
+    }
+
+    @PluginMethod
+    public void queueBackgroundUpload(PluginCall call) {
+        String imageUri = call.getString("imageUri");
+        String uploadEndpoint = call.getString("uploadEndpoint");
+        JSObject headers = call.getObject("headers");
+        JSObject formData = call.getObject("formData", new JSObject());
+        String method = call.getString("method", "POST");
+        Boolean deleteAfterUpload = call.getBoolean("deleteAfterUpload", true); // Default: true
+        
+        if (imageUri == null || uploadEndpoint == null || headers == null) {
+            call.reject("Missing required parameters");
+            return;
+        }
+        
+        String jobId = UUID.randomUUID().toString();
+        String uniqueFileName = generateUniqueFileName(imageUri);
+        
+        Data inputData = new Data.Builder()
+            .putString("jobId", jobId)
+            .putString("imageUri", imageUri)
+            .putString("uploadEndpoint", uploadEndpoint)
+            .putString("headers", headers.toString())
+            .putString("formData", formData.toString())
+            .putString("method", method)
+            .putString("fileName", uniqueFileName)
+            .putBoolean("deleteAfterUpload", deleteAfterUpload)
+            .build();
+        
+        OneTimeWorkRequest uploadWork = new OneTimeWorkRequest.Builder(GenericUploadWorker.class)
+            .setInputData(inputData)
+            .addTag(jobId)
+            .setConstraints(new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build())
+            .build();
+        
+        WorkManager.getInstance(getContext()).enqueue(uploadWork);
+        
+        JSObject result = new JSObject();
+        result.put("jobId", jobId);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void getUploadStatus(PluginCall call) {
+        String jobId = call.getString("jobId");
+        if (jobId == null) {
+            call.reject("Missing jobId parameter");
+            return;
+        }
+        
+        try {
+            WorkManager workManager = WorkManager.getInstance(getContext());
+            List<WorkInfo> workInfoList = workManager.getWorkInfosByTag(jobId).get();
+            JSObject result = new JSObject();
+            
+            if (workInfoList.isEmpty()) {
+                result.put("status", "failed");
+                result.put("error", "Job not found");
+            } else {
+                WorkInfo workInfo = workInfoList.get(0);
+                WorkInfo.State state = workInfo.getState();
+                
+                switch (state) {
+                    case ENQUEUED:
+                    case BLOCKED:
+                        result.put("status", "pending");
+                        break;
+                    case RUNNING:
+                        result.put("status", "uploading");
+                        break;
+                    case SUCCEEDED:
+                        result.put("status", "completed");
+                        break;
+                    case FAILED:
+                    case CANCELLED:
+                        result.put("status", "failed");
+                        Data outputData = workInfo.getOutputData();
+                        String error = outputData.getString("error");
+                        if (error != null) {
+                            result.put("error", error);
+                        }
+                        break;
+                }
+            }
+            
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Failed to get upload status: " + e.getMessage());
+        }
+    }
+    
+    private String generateUniqueFileName(String imageUri) {
+        try {
+            Uri uri = Uri.parse(imageUri);
+            String path = uri.getPath();
+            
+            if (path != null && !path.isEmpty()) {
+                String fileName = new File(path).getName();
+                
+                if (!fileName.isEmpty() && !fileName.equals("image.jpg")) {
+                    String baseName = fileName.contains(".") ? 
+                        fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+                    String extension = fileName.contains(".") ? 
+                        fileName.substring(fileName.lastIndexOf('.')) : ".jpg";
+                    
+                    return baseName + "_" + System.currentTimeMillis() + extension;
+                }
+            }
+            
+            long timestamp = System.currentTimeMillis();
+            String randomId = UUID.randomUUID().toString().substring(0, 8);
+            return "photo_" + timestamp + "_" + randomId + ".jpg";
+            
+        } catch (Exception e) {
+            return "photo_" + System.currentTimeMillis() + ".jpg";
+        }
     }
 
     @PluginMethod
