@@ -4,7 +4,7 @@ import type { CameraImageData, CameraMultiCapturePlugin, CameraOverlayOptions, C
 export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCapturePlugin {
   async capture(): Promise<{ value: CameraImageData }> {
     console.warn('[CameraMultiCapture] capture() not available on web.');
-    return { value: { uri: '', base64: '', webPath: '' } };
+    return { value: { uri: '', thumbnail: '', webPath: '' } };
   }
 
   async stop(): Promise<void> {
@@ -118,6 +118,26 @@ export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCaptu
         photos: 'granted' // Web doesn't have separate photos permission
       };
     }
+  }
+
+  async queueBackgroundUpload(_options: {
+    imageUri: string;
+    uploadEndpoint: string;
+    headers: Record<string, string>;
+    formData?: Record<string, string>;
+    method?: 'POST' | 'PUT';
+    deleteAfterUpload?: boolean;
+  }): Promise<{ jobId: string }> {
+    console.warn('[CameraMultiCapture] queueBackgroundUpload() not available on web.');
+    return { jobId: 'web-not-supported' };
+  }
+
+  async getUploadStatus(_options: { jobId: string }): Promise<{ 
+    status: 'pending' | 'uploading' | 'completed' | 'failed';
+    error?: string;
+  }> {
+    console.warn('[CameraMultiCapture] getUploadStatus() not available on web.');
+    return { status: 'failed', error: 'Web platform not supported' };
   }
 }
 
