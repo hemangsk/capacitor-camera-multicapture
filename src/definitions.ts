@@ -100,8 +100,24 @@ export interface CapturedImage {
  */
 export interface CameraImageData {
   uri: string;
-  base64: string;
+  thumbnail: string; // Optimized thumbnail as Base64 data URI
   webPath?: string;
+}
+
+/**
+ * Event data for photo added event
+ */
+export interface PhotoAddedEvent {
+  image: CameraImageData;
+  totalCount: number;
+}
+
+/**
+ * Event data for photo removed event
+ */
+export interface PhotoRemovedEvent {
+  imageId: string;
+  totalCount: number;
 }
 
 export interface CameraOverlayResult {
@@ -196,4 +212,24 @@ export interface CameraMultiCapturePlugin {
    * Request camera and photo library permissions
    */
   requestPermissions(): Promise<PermissionStatus>;
+
+  /**
+   * Generic background upload - works with any backend
+   */
+  queueBackgroundUpload(options: {
+    imageUri: string;
+    uploadEndpoint: string;
+    headers: Record<string, string>;
+    formData?: Record<string, string>;
+    method?: 'POST' | 'PUT';
+    deleteAfterUpload?: boolean; // Default: true
+  }): Promise<{ jobId: string }>;
+
+  /**
+   * Check upload job status
+   */
+  getUploadStatus(options: { jobId: string }): Promise<{ 
+    status: 'pending' | 'uploading' | 'completed' | 'failed';
+    error?: string;
+  }>;
 }
