@@ -1,7 +1,7 @@
 /**
  * Overlay Manager - Main controller for camera overlay UI
  */
-import type { CameraMultiCapturePlugin, CameraOverlayResult } from './definitions';
+import type { CameraMultiCapturePlugin, CameraOverlayResult, PhotoAddedEvent, PhotoRemovedEvent } from './definitions';
 import { CameraController } from './controllers/camera-controller';
 import { GalleryController } from './controllers/gallery-controller';
 import { merge } from 'lodash';
@@ -38,6 +38,30 @@ export class OverlayManager {
   constructor(plugin: CameraMultiCapturePlugin, options: CameraOverlayUIOptions) {
     this.options = options;
     this.cameraController = new CameraController(plugin, options);
+  }
+
+  /**
+   * Emits photoAdded event using pure JavaScript events
+   */
+  private emitPhotoAddedEvent(eventData: PhotoAddedEvent): void {
+    try {
+      const event = new CustomEvent('photoAdded', { detail: eventData });
+      window.dispatchEvent(event);
+    } catch (error) {
+      console.error('[CameraMultiCapture] Failed to emit photoAdded event:', error);
+    }
+  }
+
+  /**
+   * Emits photoRemoved event using pure JavaScript events
+   */
+  private emitPhotoRemovedEvent(eventData: PhotoRemovedEvent): void {
+    try {
+      const event = new CustomEvent('photoRemoved', { detail: eventData });
+      window.dispatchEvent(event);
+    } catch (error) {
+      console.error('[CameraMultiCapture] Failed to emit photoRemoved event:', error);
+    }
   }
 
   /**
@@ -124,6 +148,12 @@ export class OverlayManager {
             updateShotCounter(this.shotCounter, this.shotCount);
           }
         }
+      },
+      (eventData: PhotoAddedEvent) => {
+        this.emitPhotoAddedEvent(eventData);
+      },
+      (eventData: PhotoRemovedEvent) => {
+        this.emitPhotoRemovedEvent(eventData);
       }
     );
 

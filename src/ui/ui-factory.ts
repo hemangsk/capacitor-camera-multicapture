@@ -113,7 +113,7 @@ export function applyButtonStyle(element: HTMLButtonElement, style: ButtonStyle)
  * Creates a thumbnail image container
  */
 export function createThumbnailContainer(
-  imageData: string, 
+  thumbnailData: string, 
   thumbnailStyle: { width?: string; height?: string },
   onRemove: () => void
 ): HTMLElement {
@@ -129,13 +129,15 @@ export function createThumbnailContainer(
     borderRadius: '4px',
     overflow: 'hidden',
     flexShrink: '0',
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    contentVisibility: 'auto',
+    containIntrinsicSize: `${width} ${height}`
   });
   
   const thumbnail = document.createElement('img');
-  thumbnail.src = imageData.startsWith('data:') ? 
-    imageData : 
-    `data:image/jpeg;base64,${imageData}`;
+  thumbnail.src = thumbnailData;
+  thumbnail.loading = 'lazy';
+  thumbnail.decoding = 'async';
   
   Object.assign(thumbnail.style, {
     width: '100%',
