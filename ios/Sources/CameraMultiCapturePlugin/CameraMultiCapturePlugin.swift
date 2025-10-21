@@ -51,6 +51,37 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     let sessionQueue = DispatchQueue(label: "camera.session.queue")
     var captureDelegate: PhotoCaptureDelegate?
 
+    private func detectCurrentOrientation() -> AVCaptureVideoOrientation {
+        switch UIDevice.current.orientation {
+        case .portrait:
+            return .portrait
+        case .portraitUpsideDown:
+            return .portraitUpsideDown
+        case .landscapeLeft:
+            return .landscapeRight
+        case .landscapeRight:
+            return .landscapeLeft
+        default:
+            if #available(iOS 13.0, *) {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    switch windowScene.interfaceOrientation {
+                    case .portrait:
+                        return .portrait
+                    case .portraitUpsideDown:
+                        return .portraitUpsideDown
+                    case .landscapeLeft:
+                        return .landscapeRight
+                    case .landscapeRight:
+                        return .landscapeLeft
+                    default:
+                        return .portrait
+                    }
+                }
+            }
+            return .portrait
+        }
+    }
+
     @objc func start(_ call: CAPPluginCall) {
         print("Received data from JS: \(call.dictionaryRepresentation)")
 
@@ -80,13 +111,17 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let zoom = CGFloat(call.getFloat("zoom") ?? 1.0)
         let jpegQuality = CGFloat(call.getFloat("jpegQuality") ?? 0.8)
         let autofocus = call.getBool("autoFocus") ?? true
-        let rotation = call.getInt("rotation") ?? 0
+        
         let orientation: AVCaptureVideoOrientation
-        switch rotation {
-        case 90: orientation = .landscapeRight
-        case 180: orientation = .portraitUpsideDown
-        case 270: orientation = .landscapeLeft
-        default: orientation = .portrait
+        if let rotation = call.getInt("rotation") {
+            switch rotation {
+            case 90: orientation = .landscapeRight
+            case 180: orientation = .portraitUpsideDown
+            case 270: orientation = .landscapeLeft
+            default: orientation = .portrait
+            }
+        } else {
+            orientation = detectCurrentOrientation()
         }
         
         let flashModeString = call.getString("flash") ?? "off"
@@ -393,34 +428,14 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
 
         DispatchQueue.main.async {
             if let previewView = self.cameraPreviewView, let videoLayer = self.previewLayer {
-                // Update the preview view frame
                 previewView.frame = CGRect(x: x, y: y, width: width, height: height)
-                
-                // Update the video layer frame to match
                 videoLayer.frame = previewView.bounds
                 
-                // Handle orientation changes - detect current device orientation if not provided
                 if call.getInt("rotation") == nil {
-                    let newOrientation: AVCaptureVideoOrientation
-                    switch UIDevice.current.orientation {
-                    case .portrait:
-                        newOrientation = .portrait
-                    case .portraitUpsideDown:
-                        newOrientation = .portraitUpsideDown
-                    case .landscapeLeft:
-                        newOrientation = .landscapeRight
-                    case .landscapeRight:
-                        newOrientation = .landscapeLeft
-                    default:
-                        // Default to portrait if unknown orientation
-                        newOrientation = .portrait
-                    }
-                    
-                    // Update both preview layer and current orientation for photo capture
+                    let newOrientation = self.detectCurrentOrientation()
                     videoLayer.connection?.videoOrientation = newOrientation
                     self.currentOrientation = newOrientation
                 } else {
-                    // Use provided rotation
                     let rotation = call.getInt("rotation") ?? 0
                     let newOrientation: AVCaptureVideoOrientation
                     switch rotation {
@@ -430,7 +445,6 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                     default: newOrientation = .portrait
                     }
                     
-                    // Update both preview layer and current orientation for photo capture
                     videoLayer.connection?.videoOrientation = newOrientation
                     self.currentOrientation = newOrientation
                 }
