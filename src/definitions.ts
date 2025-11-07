@@ -1,4 +1,4 @@
-import type { PermissionState } from '@capacitor/core';
+import type { PermissionState, PluginListenerHandle } from '@capacitor/core';
 
 export interface ThumbnailStyle {
   width?: string;
@@ -232,4 +232,20 @@ export interface CameraMultiCapturePlugin {
     status: 'pending' | 'uploading' | 'completed' | 'failed';
     error?: string;
   }>;
+
+  /**
+   * Listen to orientation check events (triggered on capture)
+   */
+  addListener(
+    eventName: 'orientationCheck',
+    listenerFunc: (event: OrientationCheckEvent) => void,
+  ): Promise<PluginListenerHandle>;
+}
+
+export interface OrientationCheckEvent {
+  deviceOrientation: 'portrait' | 'portrait-upside-down' | 'landscape-left' | 'landscape-right' | 'unknown';
+  deviceDegrees: number;
+  pluginOrientation: 'portrait' | 'portrait-upside-down' | 'landscape-left' | 'landscape-right' | 'unknown';
+  pluginDegrees: number;
+  rotationLocked: boolean;
 }
