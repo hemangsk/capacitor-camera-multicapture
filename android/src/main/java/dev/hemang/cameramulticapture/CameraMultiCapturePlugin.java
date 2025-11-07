@@ -16,6 +16,10 @@ import android.util.Size;
 import android.view.Surface;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.provider.Settings;
+import android.view.WindowManager;
+import android.hardware.SensorManager;
+import android.view.OrientationEventListener;
 
 import androidx.annotation.NonNull;
 import androidx.camera.core.Camera;
@@ -235,6 +239,8 @@ public class CameraMultiCapturePlugin extends Plugin {
             call.reject("ImageCapture not initialized");
             return;
         }
+
+        checkAndNotifyOrientation();
 
         int quality = call.getInt("quality", currentConfig.jpegQuality);
 
@@ -847,6 +853,94 @@ public class CameraMultiCapturePlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("flashMode", flashMode);
         call.resolve(result);
+    }
+
+    private void checkAndNotifyOrientation() {
+        boolean rotationLocked = false;
+        try {
+            rotationLocked = Settings.System.getInt(
+                getContext().getContentResolver(),
+                Settings.System.ACCELEROMETER_ROTATION
+            ) == 0;
+        } catch (Settings.SettingNotFoundException e) {
+            rotationLocked = false;
+        }
+
+        if (!rotationLocked) {
+            return;
+        }
+
+        final int[] deviceOrientationDegrees = new int[1];
+        final String[] deviceOrientationName = new String[1];
+        
+        OrientationEventListener tempListener = new OrientationEventListener(getContext(), SensorManager.SENSOR_DELAY_NORMAL) {
+            @Override
+            public void onOrientationChanged(int orientation) {
+                if (orientation == OrientationEventListener.ORIENTATION_UNKNOWN) {
+                    deviceOrientationName[0] = "unknown";
+                    deviceOrientationDegrees[0] = -1;
+                } else if (orientation >= 315 || orientation < 45) {
+                    deviceOrientationName[0] = "portrait";
+                    deviceOrientationDegrees[0] = 0;
+                } else if (orientation >= 45 && orientation < 135) {
+                    deviceOrientationName[0] = "landscape-left";
+                    deviceOrientationDegrees[0] = 90;
+                } else if (orientation >= 135 && orientation < 225) {
+                    deviceOrientationName[0] = "portrait-upside-down";
+                    deviceOrientationDegrees[0] = 180;
+                } else {
+                    deviceOrientationName[0] = "landscape-right";
+                    deviceOrientationDegrees[0] = 270;
+                }
+            }
+        };
+        
+        if (tempListener.canDetectOrientation()) {
+            tempListener.enable();
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            tempListener.disable();
+        }
+
+        WindowManager windowManager = (WindowManager) getContext().getSystemService(android.content.Context.WINDOW_SERVICE);
+        int displayRotation = windowManager.getDefaultDisplay().getRotation();
+        
+        String pluginOrientationName = "portrait";
+        int pluginDegrees = 0;
+        
+        switch (displayRotation) {
+            case Surface.ROTATION_0:
+                pluginOrientationName = "portrait";
+                pluginDegrees = 0;
+                break;
+            case Surface.ROTATION_90:
+                pluginOrientationName = "landscape-right";
+                pluginDegrees = 270;
+                break;
+            case Surface.ROTATION_180:
+                pluginOrientationName = "portrait-upside-down";
+                pluginDegrees = 180;
+                break;
+            case Surface.ROTATION_270:
+                pluginOrientationName = "landscape-left";
+                pluginDegrees = 90;
+                break;
+        }
+
+        if (deviceOrientationName[0] == null || deviceOrientationName[0].equals(pluginOrientationName)) {
+            return;
+        }
+
+        JSObject data = new JSObject();
+        data.put("deviceOrientation", deviceOrientationName[0]);
+        data.put("deviceDegrees", deviceOrientationDegrees[0]);
+        data.put("pluginOrientation", pluginOrientationName);
+        data.put("pluginDegrees", pluginDegrees);
+        data.put("rotationLocked", rotationLocked);
+        notifyListeners("orientationCheck", data);
     }
 
 }
