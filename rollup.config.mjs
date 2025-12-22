@@ -1,3 +1,5 @@
+import resolve from '@rollup/plugin-node-resolve';
+
 export default {
   input: 'dist/esm/index.js',
   output: [
@@ -7,6 +9,7 @@ export default {
       name: 'capacitorCameraMultiCapture',
       globals: {
         '@capacitor/core': 'capacitorExports',
+        'lodash': 'lodash',
       },
       sourcemap: true,
       inlineDynamicImports: true,
@@ -18,5 +21,10 @@ export default {
       inlineDynamicImports: true,
     },
   ],
-  external: ['@capacitor/core'],
+  plugins: [
+    resolve({
+      extensions: ['.js', '.ts', '.mjs'],
+    }),
+  ],
+  external: ['@capacitor/core', 'lodash'],
 };
