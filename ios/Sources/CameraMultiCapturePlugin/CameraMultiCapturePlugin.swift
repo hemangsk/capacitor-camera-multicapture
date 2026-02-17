@@ -181,6 +181,10 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         
         if let connection = photoOutput.connection(with: .video) {
             connection.videoOrientation = currentOrientation
+            // Prevent front camera from capturing mirrored images
+            if self.cameraPosition == .front {
+                connection.isVideoMirrored = false
+            }
         }
         
         let delegate = PhotoCaptureDelegate(plugin: self, call: call, resultType: resultType)
