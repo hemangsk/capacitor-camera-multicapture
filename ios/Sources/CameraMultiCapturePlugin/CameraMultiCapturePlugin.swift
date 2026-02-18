@@ -187,7 +187,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             }
         }
         
-        let delegate = PhotoCaptureDelegate(plugin: self, call: call, resultType: resultType)
+        let delegate = PhotoCaptureDelegate(plugin: self, call: call, resultType: resultType, isFrontCamera: cameraPosition == .front)
         self.captureDelegate = delegate
 
         photoOutput.capturePhoto(with: settings, delegate: delegate)
@@ -955,11 +955,13 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
     weak var plugin: CameraMultiCapturePlugin?
     var call: CAPPluginCall
     var resultType: String
+    var isFrontCamera: Bool
 
-    init(plugin: CameraMultiCapturePlugin, call: CAPPluginCall, resultType: String) {
+    init(plugin: CameraMultiCapturePlugin, call: CAPPluginCall, resultType: String, isFrontCamera: Bool) {
         self.plugin = plugin
         self.call = call
         self.resultType = resultType
+        self.isFrontCamera = isFrontCamera
     }
 
     func photoOutput(
@@ -986,6 +988,12 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
             
             var metadata = self.extractMetadata(from: photo)
             let correctedImage = originalImage.reformat()
+
+            var correctedImage = originalImage.reformat()
+            // Mirror image horizontally if taken with front camera
+            if self.isFrontCamera {
+                correctedImage = correctedImage.mirrorHorizontally()
+            }
             
             self.overwriteMetadataOrientation(in: &metadata, to: 1)
             
@@ -1141,4 +1149,26 @@ extension UIImage {
         
         return resizedImage ?? self
     }
+
+    /**
+           * Mirrors the image horizontally (flips left-to-right)
+           * Used to correct front-camera selfies which are captured mirrored
+           */
+        func mirrorHorizontally() -> UIImage {
+            UIGraphicsBeginImageContextWithOptions(self.size, false, self.scale)
+              guard let context = UIGraphicsGetCurrentContext() else {
+                  return self
+            }
+      
+            // Flip horizontally
+            context.translateBy(x: self.size.width, y: 0)
+            context.scaleBy(x: -1.0, y: 1.0)
+      
+            self.draw(in: CGRect(origin: .zero, size: self.size))
+      
+            let mirroredImage = UIGraphicsGetImageFromCurrentImageContext()
+            UIGraphicsEndImageContext()
+      
+            return mirroredImage ?? self
+        }
 }
