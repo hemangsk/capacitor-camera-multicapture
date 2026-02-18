@@ -987,7 +987,7 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
             }
             
             var metadata = self.extractMetadata(from: photo)
-            let correctedImage = originalImage.reformat()
+
 
             var correctedImage = originalImage.reformat()
             // Mirror image horizontally if taken with front camera
@@ -1151,24 +1151,24 @@ extension UIImage {
     }
 
     /**
-           * Mirrors the image horizontally (flips left-to-right)
-           * Used to correct front-camera selfies which are captured mirrored
-           */
-        func mirrorHorizontally() -> UIImage {
-            UIGraphicsBeginImageContextWithOptions(self.size, false, self.scale)
-              guard let context = UIGraphicsGetCurrentContext() else {
-                  return self
-            }
-      
-            // Flip horizontally
-            context.translateBy(x: self.size.width, y: 0)
-            context.scaleBy(x: -1.0, y: 1.0)
-      
-            self.draw(in: CGRect(origin: .zero, size: self.size))
-      
-            let mirroredImage = UIGraphicsGetImageFromCurrentImageContext()
-            UIGraphicsEndImageContext()
-      
-            return mirroredImage ?? self
+     * Mirrors the image horizontally (flips left-to-right)
+     * Used to correct front-camera selfies which are captured mirrored
+     */
+    func mirrorHorizontally() -> UIImage {
+        UIGraphicsBeginImageContextWithOptions(self.size, false, self.scale)
+        guard let context = UIGraphicsGetCurrentContext() else {
+            return self
         }
+
+        // Flip horizontally
+        context.translateBy(x: self.size.width, y: 0)
+        context.scaleBy(x: -1.0, y: 1.0)
+
+        self.draw(in: CGRect(origin: .zero, size: self.size))
+
+        let mirroredImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+
+        return mirroredImage ?? self
+    }
 }
