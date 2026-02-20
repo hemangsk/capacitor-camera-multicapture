@@ -11,13 +11,9 @@ import {
   createOverlayContainer,
   createPositionContainers,
   createBottomGridCells,
-  createGallery
+  createGallery,
 } from './ui/layout-manager';
-import type {
-  ButtonsConfig,
-  CameraOverlayUIOptions,
-} from './types/ui-types';
-
+import type { ButtonsConfig, CameraOverlayUIOptions } from './types/ui-types';
 
 /**
  * Main class to manage camera overlay UI
@@ -89,16 +85,12 @@ export class OverlayManager {
         this.bodyBackgroundColor = document.body.style.backgroundColor;
         document.body.style.backgroundColor = 'transparent';
 
-        await this.cameraController.initialize(
-          container,
-          this.options.quality ?? 90,
-        );
+        await this.cameraController.initialize(container, this.options.quality ?? 90);
 
         // Create zoom buttons after camera init
         if (this.zoomContainer && this.zoomConfig) {
           await this.createZoomButtonsAfterInit();
         }
-
       } catch (error) {
         console.error('Failed to initialize camera overlay', error);
         resolve({ images: [], cancelled: true });
@@ -106,7 +98,6 @@ export class OverlayManager {
       }
     });
   }
-
 
   async refresh(): Promise<void> {
     await this.cameraController.refresh();
@@ -154,23 +145,20 @@ export class OverlayManager {
       },
       (eventData: PhotoRemovedEvent) => {
         this.emitPhotoRemovedEvent(eventData);
-      }
+      },
     );
 
     // Merge default buttons with user-provided options
-    const buttons: ButtonsConfig = merge(
-      defaultButtons,
-      this.options.buttons || {}
-    );
+    const buttons: ButtonsConfig = merge(defaultButtons, this.options.buttons || {});
 
     // Create buttons
     const captureBtn = createButton(buttons.capture);
-    
+
     // Create shot counter only if enabled
     if (this.options.showShotCounter) {
       this.shotCounter = createShotCounter();
     }
-    
+
     // Place capture button back in center (no container needed)
     bottomCells.middle.appendChild(captureBtn);
 
@@ -179,7 +167,7 @@ export class OverlayManager {
         const imageData = await this.cameraController.captureImage();
         if (imageData && this.galleryController) {
           this.galleryController.addImage(imageData);
-          
+
           // Increment shot counter and update UI (only if counter is enabled)
           if (this.options.showShotCounter) {
             this.shotCount++;
@@ -187,10 +175,9 @@ export class OverlayManager {
               updateShotCounter(this.shotCounter, this.shotCount);
             }
           }
-          
+
           // Check if we've reached maxCaptures limit
-          if (this.options.maxCaptures && 
-              this.galleryController.getImages().length >= this.options.maxCaptures) {
+          if (this.options.maxCaptures && this.galleryController.getImages().length >= this.options.maxCaptures) {
             // Auto-complete capture when limit is reached
             setTimeout(() => {
               this.completeCapture(false);
@@ -205,7 +192,7 @@ export class OverlayManager {
     // Only show Done button if not in single capture mode
     if (this.options.maxCaptures !== 1) {
       const doneBtn = createButton(buttons.done);
-      
+
       // If counter is enabled, create a container with counter and done button
       if (this.shotCounter) {
         const rightContainer = document.createElement('div');
@@ -213,9 +200,9 @@ export class OverlayManager {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '0.625rem'
+          gap: '0.625rem',
         });
-        
+
         rightContainer.appendChild(this.shotCounter);
         rightContainer.appendChild(doneBtn);
         bottomCells.right.appendChild(rightContainer);
@@ -277,14 +264,14 @@ export class OverlayManager {
     container.appendChild(switchBtn);
   }
 
-   /**
+  /**
    * Creates zoom buttons after camera initialization
    */
-   private async createZoomButtonsAfterInit(): Promise<void> {
+  private async createZoomButtonsAfterInit(): Promise<void> {
     if (!this.zoomContainer || !this.zoomConfig) return;
-    
+
     let smartZoomLevels: { level: number; isPhysicalCamera: boolean }[];
-    
+
     try {
       // Get smart zoom levels that include physical camera switches
       smartZoomLevels = await this.cameraController.getSmartZoomLevels();
@@ -293,25 +280,24 @@ export class OverlayManager {
       const fallbackLevels = this.zoomConfig.levels || [1, 2, 3, 4];
       smartZoomLevels = fallbackLevels.map((level: number) => ({ level, isPhysicalCamera: false }));
     }
-    
+
     // Create zoom buttons with the smart levels
     this.createZoomButtons(smartZoomLevels, this.zoomContainer);
   }
-
 
   /**
    * Creates smart zoom buttons with physical camera indication
    */
   private createZoomButtons(levels: { level: number; isPhysicalCamera: boolean }[], container: HTMLElement): void {
     const config = this.zoomConfig || {};
-    
+
     let currentZoomLevel = 1; // Default zoom level
     const zoomButtons: HTMLButtonElement[] = [];
 
     // Add zoom buttons in a horizontal row
     levels.forEach((zoomInfo) => {
       const level: any = zoomInfo.level;
-      
+
       // Format zoom level display
       let displayText: string;
       if (level === 1) {
@@ -324,9 +310,9 @@ export class OverlayManager {
         // Round to one decimal place for fractional numbers (0.673434 -> 0.7x)
         displayText = `${Math.round(level * 10) / 10}x`;
       }
-      
+
       // Create a button for each zoom level
-      const zoomBtn = createButton({...config, text: displayText});
+      const zoomBtn = createButton({ ...config, text: displayText });
 
       // Make zoom buttons smaller and more compact
       Object.assign(zoomBtn.style, {
@@ -336,7 +322,7 @@ export class OverlayManager {
         margin: '0 3px',
         fontSize: '14px',
         fontWeight: '500',
-        transition: 'all 0.2s ease'
+        transition: 'all 0.2s ease',
       });
 
       // Highlight the default 1x zoom
@@ -344,7 +330,7 @@ export class OverlayManager {
         Object.assign(zoomBtn.style, {
           backgroundColor: '#ffffff',
           color: '#000000',
-          fontWeight: '700'
+          fontWeight: '700',
         });
       }
 
@@ -353,24 +339,24 @@ export class OverlayManager {
           // Use smart zoom to handle physical camera switching
           await this.cameraController.performSmartZoom(level);
           currentZoomLevel = level;
-          
+
           // Update button states
           zoomButtons.forEach((btn, btnIndex) => {
             const btnLevel = levels[btnIndex].level;
-            
+
             if (btnLevel === currentZoomLevel) {
               // Highlight selected button
               Object.assign(btn.style, {
                 backgroundColor: '#ffffff',
                 color: '#000000',
-                fontWeight: '700'
+                fontWeight: '700',
               });
             } else {
               // Reset non-selected buttons
               Object.assign(btn.style, {
                 backgroundColor: 'rgba(0,0,0,0.5)',
                 color: '#ffffff',
-                fontWeight: '500'
+                fontWeight: '500',
               });
             }
           });
@@ -390,7 +376,7 @@ export class OverlayManager {
   private createFlashButton(config: any, container: HTMLElement): void {
     const flashBtn = createButton({
       ...config,
-      icon: config.offIcon // Start with off icon
+      icon: config.offIcon, // Start with off icon
     });
 
     const updateFlashIcon = async (mode: 'on' | 'off' | 'auto') => {
@@ -426,7 +412,6 @@ export class OverlayManager {
     container.appendChild(flashBtn);
   }
 
- 
   /**
    * Completes the capture process
    */
@@ -437,8 +422,8 @@ export class OverlayManager {
 
     if (this.resolvePromise) {
       this.resolvePromise({
-        images: !cancelled ? images.map(img => img.data) : [],
-        cancelled
+        images: !cancelled ? images.map((img) => img.data) : [],
+        cancelled,
       });
       this.resolvePromise = null;
     }
@@ -448,7 +433,7 @@ export class OverlayManager {
    * Cleans up resources
    */
   private cleanup(): void {
-    this.cameraController.stop().catch(err => {
+    this.cameraController.stop().catch((err) => {
       console.warn('Error stopping camera', err);
     });
 

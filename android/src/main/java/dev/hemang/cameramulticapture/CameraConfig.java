@@ -20,6 +20,8 @@ public class CameraConfig {
     public int previewX;
     public int previewY;
     public int flashMode;
+    public boolean pinchToZoomEnabled;
+    public boolean pinchToZoomLockToNearestStep;
 
 
     public CameraConfig() {
@@ -35,5 +37,7 @@ public class CameraConfig {
         this.previewX = 0;
         this.previewY = 0;
         this.flashMode = ImageCapture.FLASH_MODE_OFF;
+        this.pinchToZoomEnabled = false;
+        this.pinchToZoomLockToNearestStep = false;
     }
 }

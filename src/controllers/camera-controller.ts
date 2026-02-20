@@ -23,6 +23,9 @@ export class CameraController {
   private options: CameraOverlayUIOptions;
   private flashMode: 'on' | 'off' | 'auto' = 'off';
   private flashAutoModeEnabled: boolean = true;
+  private pinchStartDistance = 0;
+  private pinchStartZoom = 1;
+  private currentZoom = 1;
   private availableCameras: {
     hasUltrawide: boolean;
     hasWide: boolean;
@@ -86,11 +89,52 @@ export class CameraController {
    */
   async setZoom(level: number): Promise<void> {
     try {
+      this.currentZoom = level;   // important
       await this.plugin.setZoom({ zoom: level });
     } catch (error) {
       console.error('Failed to set zoom', error);
       throw error;
     }
+  }
+
+  attachPinch(container: HTMLElement) {
+    
+    container.addEventListener('touchstart', (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        this.pinchStartDistance = Math.sqrt(dx * dx + dy * dy);
+        this.pinchStartZoom = this.currentZoom || 1;
+      }
+    }, { passive: true });
+    
+    
+    container.addEventListener('touchmove', async (e: TouchEvent) => {
+      if (e.touches.length === 2 && this.pinchStartDistance > 0) {
+        
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const scale = distance / this.pinchStartDistance;
+        
+        const zoomInfo = await this.getAvailableZoomLevels();
+        
+        let newZoom = this.pinchStartZoom * scale;
+        
+        newZoom = Math.max(
+          zoomInfo.minZoom,
+          Math.min(newZoom, zoomInfo.maxZoom)
+        );
+        
+        this.setZoom(newZoom);
+      }
+    }, { passive: true });
+    
+    
+    container.addEventListener('touchend', () => {
+      this.pinchStartDistance = 0;
+    });
   }
 
   /**
