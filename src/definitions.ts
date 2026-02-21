@@ -69,6 +69,25 @@ export interface CameraPreviewRect {
   y?: number;
 }
 
+export interface PinchToZoomOptions {
+  /**
+   * Enable pinch-to-zoom gesture control
+   * @default false
+   */
+  enabled?: boolean;
+  /**
+   * Use native (platform) pinch handling. If false, pinch is handled in JavaScript.
+   * @default true
+   */
+  useNative?: boolean;
+  /**
+   * Lock zoom to nearest preset level when gesture ends (JS mode only when useNative is false)
+   * If false, allows continuous/nonstandard zoom factors
+   * @default false
+   */
+  lockToNearestStep?: boolean;
+}
+
 export interface CameraOverlayOptions {
   buttons?: CameraOverlayButtons;
   thumbnailStyle?: { width: string; height: string };
@@ -84,6 +103,10 @@ export interface CameraOverlayOptions {
   maxCaptures?: number;
   flashAutoModeEnabled?: boolean;
   showShotCounter?: boolean;
+  /**
+   * Pinch-to-zoom configuration for physical camera zoom control
+   */
+  pinchToZoom?: PinchToZoomOptions;
 }
 
 
