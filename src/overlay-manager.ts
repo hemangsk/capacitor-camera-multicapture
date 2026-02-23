@@ -32,7 +32,7 @@ export class OverlayManager {
   private zoomButtonLevels: number[] = [];
   private shotCounter: HTMLElement | null = null;
   private shotCount: number = 0;
-  /** JavaScript pinch-to-zoom state (when useNative is false) */
+  /** JavaScript pinch-to-zoom state */
   private pinchElement: HTMLElement | null = null;
   private pinchStartDistance: number = 0;
   private pinchStartZoom: number = 1;
