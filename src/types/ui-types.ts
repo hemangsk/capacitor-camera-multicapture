@@ -79,7 +79,6 @@ export interface CameraOverlayUIOptions {
   showShotCounter?: boolean;
   pinchToZoom?: {
     enabled?: boolean;
-    /** Use native pinch (true) or JavaScript pinch (false). Default true. */
     useNative?: boolean;
     lockToNearestStep?: boolean;
   };
