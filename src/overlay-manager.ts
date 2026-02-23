@@ -28,6 +28,8 @@ export class OverlayManager {
   private bodyBackgroundColor: string | null = null;
   private zoomContainer: HTMLElement | null = null;
   private zoomConfig: any = null;
+  private zoomButtonsList: HTMLButtonElement[] = [];
+  private zoomButtonLevels: number[] = [];
   private shotCounter: HTMLElement | null = null;
   private shotCount: number = 0;
   /** JavaScript pinch-to-zoom state (when useNative is false) */
@@ -307,8 +309,11 @@ export class OverlayManager {
   private createZoomButtons(levels: { level: number; isPhysicalCamera: boolean }[], container: HTMLElement): void {
     const config = this.zoomConfig || {};
 
+    // Track buttons and their corresponding zoom levels so we can update them from pinch and clicks
+    this.zoomButtonsList = [];
+    this.zoomButtonLevels = levels.map((z) => z.level);
+
     let currentZoomLevel = 1; // Default zoom level
-    const zoomButtons: HTMLButtonElement[] = [];
 
     // Add zoom buttons in a horizontal row
     levels.forEach((zoomInfo) => {
@@ -341,48 +346,60 @@ export class OverlayManager {
         transition: 'all 0.2s ease',
       });
 
-      // Highlight the default 1x zoom
-      if (level === 1) {
-        Object.assign(zoomBtn.style, {
-          backgroundColor: '#ffffff',
-          color: '#000000',
-          fontWeight: '700',
-        });
-      }
-
       zoomBtn.onclick = async () => {
         try {
           // Use smart zoom to handle physical camera switching
           await this.cameraController.performSmartZoom(level);
           currentZoomLevel = level;
 
-          // Update button states
-          zoomButtons.forEach((btn, btnIndex) => {
-            const btnLevel = levels[btnIndex].level;
-
-            if (btnLevel === currentZoomLevel) {
-              // Highlight selected button
-              Object.assign(btn.style, {
-                backgroundColor: '#ffffff',
-                color: '#000000',
-                fontWeight: '700',
-              });
-            } else {
-              // Reset non-selected buttons
-              Object.assign(btn.style, {
-                backgroundColor: 'rgba(0,0,0,0.5)',
-                color: '#ffffff',
-                fontWeight: '500',
-              });
-            }
-          });
+          // Update button states based on the new zoom level
+          this.updateZoomButtonSelection(currentZoomLevel);
         } catch (error) {
           console.error(`Failed to set zoom to ${level}x`, error);
         }
       };
 
-      zoomButtons.push(zoomBtn);
+      this.zoomButtonsList.push(zoomBtn);
       container.appendChild(zoomBtn);
+    });
+
+    // Initial highlight (typically 1x)
+    this.updateZoomButtonSelection(currentZoomLevel);
+  }
+
+  /**
+   * Updates zoom button styles so the button closest to currentZoom is highlighted.
+   */
+  private updateZoomButtonSelection(currentZoom: number): void {
+    if (!this.zoomButtonsList.length || !this.zoomButtonLevels.length) return;
+    
+    // Find the zoom level closest to the current zoom
+    let nearestIdx = 0;
+    let bestDist = Math.abs(this.zoomButtonLevels[0] - currentZoom);
+
+    for (let i = 1; i < this.zoomButtonLevels.length; i++) {
+      const d = Math.abs(this.zoomButtonLevels[i] - currentZoom);
+      if (d < bestDist) {
+        bestDist = d;
+        nearestIdx = i;
+      }
+    }
+
+    // Highlight only the nearest button
+    this.zoomButtonsList.forEach((btn, idx) => {
+      if (idx === nearestIdx) {
+        Object.assign(btn.style, {
+          backgroundColor: '#ffffff',
+          color: '#000000',
+          fontWeight: '700',
+        });
+      } else {
+        Object.assign(btn.style, {
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          color: '#ffffff',
+          fontWeight: '500',
+        });
+      }
     });
   }
 
@@ -493,6 +510,7 @@ export class OverlayManager {
     let zoom = this.pinchStartZoom * scale;
     zoom = Math.max(this.pinchMinZoom, Math.min(this.pinchMaxZoom, zoom));
     this.cameraController.setZoom(zoom).catch((err) => console.warn('Set zoom failed', err));
+    this.updateZoomButtonSelection(zoom);
   }
 
   private onPinchEnd(e: TouchEvent): void {
@@ -513,6 +531,11 @@ export class OverlayManager {
         }
       }
       this.cameraController.setZoom(nearest).catch((err) => console.warn('Set zoom failed', err));
+      this.updateZoomButtonSelection(nearest);
+    } else {
+      // Even without snapping, move the highlight to the closest zoom button
+      const current = this.cameraController.getCurrentZoom();
+      this.updateZoomButtonSelection(current);
     }
   }
 
