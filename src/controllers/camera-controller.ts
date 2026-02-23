@@ -57,7 +57,9 @@ export class CameraController {
         containerId: containerElement.id || 'camera-container',
       };
       
-      // Pass pinchToZoom to native only when using native pinch
+      // Pass pinchToZoom through to the native layer when enabled.
+      // The current implementation handles pinch gestures in JavaScript;
+      // this option is forwarded in case a native implementation wants it.
       if (this.options.pinchToZoom?.enabled && this.options.pinchToZoom?.useNative !== false) {
         startOptions.pinchToZoom = this.options.pinchToZoom;
       }

@@ -89,16 +89,6 @@ public class CameraConfigMapper {
             }
         }
 
-        // Handle pinch-to-zoom options
-        JSObject pinchToZoom = data.getJSObject("pinchToZoom");
-        if (pinchToZoom != null) {
-            config.pinchToZoomEnabled = pinchToZoom.getBoolean("enabled", false);
-            config.pinchToZoomLockToNearestStep = pinchToZoom.getBoolean("lockToNearestStep", false);
-        } else {
-            config.pinchToZoomEnabled = false;
-            config.pinchToZoomLockToNearestStep = false;
-        }
-
         return config;
     }
 }
