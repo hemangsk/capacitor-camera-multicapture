@@ -17,8 +17,6 @@ import android.view.OrientationEventListener;
 import android.view.Surface;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-import android.view.ScaleGestureDetector;
-import android.view.MotionEvent;
 
 import androidx.annotation.NonNull;
 import androidx.camera.core.Camera;
@@ -75,25 +73,16 @@ public class CameraMultiCapturePlugin extends Plugin {
     private PreviewView previewView;
     private ImageCapture imageCapture;
     private Camera camera;
-    private ScaleGestureDetector scaleGestureDetector;
     private ProcessCameraProvider cameraProvider;
     private CameraConfig currentConfig = new CameraConfig();
     private OrientationEventListener orientationEventListener;
     private int lastKnownOrientation = 0; // 0=portrait, 90=landscape-left, 180=upside-down, 270=landscape-right
-    private float initialZoomOnGestureStart = 1.0f;
-    private List<Float> discreteZoomLevels = new ArrayList<>();
 
     private void ensurePreviewView() {
         if (previewView != null) return;
 
         previewView = new PreviewView(getContext());
 
-        // ---------- PINCH TO ZOOM (native) ----------
-        // Only enable if configured
-        if (currentConfig.pinchToZoomEnabled) {
-            setupPinchToZoom();
-        }
-        
         android.util.DisplayMetrics displayMetrics = new android.util.DisplayMetrics();
         getActivity().getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
         float density = displayMetrics.density;
@@ -135,146 +124,6 @@ public class CameraMultiCapturePlugin extends Plugin {
 
         rootView.requestLayout();
         rootView.invalidate();
-    }
-
-    private void setupPinchToZoom() {
-        scaleGestureDetector = new ScaleGestureDetector(
-            getContext(),
-            new ScaleGestureDetector.SimpleOnScaleGestureListener() {
-
-                @Override
-                public boolean onScaleBegin(ScaleGestureDetector detector) {
-                    if (camera == null) return false;
-                    
-                    androidx.camera.core.ZoomState zoomState =
-                            camera.getCameraInfo().getZoomState().getValue();
-                    
-                    if (zoomState != null) {
-                        initialZoomOnGestureStart = zoomState.getZoomRatio();
-                        
-                        // Load discrete zoom levels if lock-to-nearest is enabled
-                        if (currentConfig.pinchToZoomLockToNearestStep) {
-                            loadDiscreteZoomLevels();
-                        }
-                    }
-                    
-                    return true;
-                }
-
-                @Override
-                public boolean onScale(ScaleGestureDetector detector) {
-                    if (camera == null) return false;
-
-                    float scale = detector.getScaleFactor();
-                    androidx.camera.core.ZoomState zoomState =
-                            camera.getCameraInfo().getZoomState().getValue();
-
-                    if (zoomState == null) return false;
-
-                    // Calculate new zoom based on initial zoom at gesture start
-                    float newZoom = initialZoomOnGestureStart * scale;
-
-                    // Clamp to valid range
-                    float clamped = Math.max(
-                            zoomState.getMinZoomRatio(),
-                            Math.min(newZoom, zoomState.getMaxZoomRatio())
-                    );
-
-                    camera.getCameraControl().setZoomRatio(clamped);
-                    currentConfig.zoomRatio = clamped;
-
-                    Log.d("PINCH_NATIVE", "zoom=" + clamped);
-
-                    return true;
-                }
-
-                @Override
-                public void onScaleEnd(ScaleGestureDetector detector) {
-                    if (camera == null) return;
-                    
-                    // Lock to nearest step if enabled
-                    if (currentConfig.pinchToZoomLockToNearestStep && !discreteZoomLevels.isEmpty()) {
-                        androidx.camera.core.ZoomState zoomState =
-                                camera.getCameraInfo().getZoomState().getValue();
-                        
-                        if (zoomState != null) {
-                            float currentZoom = zoomState.getZoomRatio();
-                            
-                            // Find nearest discrete level
-                            float nearest = discreteZoomLevels.get(0);
-                            float minDistance = Math.abs(currentZoom - nearest);
-                            
-                            for (Float level : discreteZoomLevels) {
-                                float distance = Math.abs(currentZoom - level);
-                                if (distance < minDistance) {
-                                    minDistance = distance;
-                                    nearest = level;
-                                }
-                            }
-                            
-                            // Apply the nearest zoom level
-                            camera.getCameraControl().setZoomRatio(nearest);
-                            currentConfig.zoomRatio = nearest;
-                            
-                            Log.d("PINCH_NATIVE", "Locked to nearest zoom: " + nearest);
-                        }
-                    }
-                }
-            }
-        );
-
-        // Attach touch listener ONLY to preview
-        previewView.setOnTouchListener((v, event) -> {
-            if (scaleGestureDetector != null && currentConfig.pinchToZoomEnabled) {
-                scaleGestureDetector.onTouchEvent(event);
-            }
-            return false;
-        });
-    }
-
-    private void loadDiscreteZoomLevels() {
-        discreteZoomLevels.clear();
-        
-        if (camera == null) return;
-        
-        androidx.camera.core.ZoomState zoomState =
-                camera.getCameraInfo().getZoomState().getValue();
-        
-        if (zoomState == null) return;
-        
-        float minZoom = zoomState.getMinZoomRatio();
-        float maxZoom = zoomState.getMaxZoomRatio();
-        
-        // Build discrete levels based on device capabilities
-        // Add ultra-wide if available
-        if (minZoom < 1.0f) {
-            if (minZoom > 0.6f && minZoom < 0.8f) {
-                discreteZoomLevels.add(0.7f);
-            } else if (minZoom < 0.6f) {
-                discreteZoomLevels.add(0.5f);
-            } else {
-                discreteZoomLevels.add(minZoom);
-            }
-        }
-        
-        // Always add 1x
-        discreteZoomLevels.add(1.0f);
-        
-        // Add telephoto presets based on max zoom
-        if (maxZoom >= 2.0f) {
-            discreteZoomLevels.add(2.0f);
-        }
-        if (maxZoom >= 3.0f) {
-            discreteZoomLevels.add(3.0f);
-        }
-        if (maxZoom >= 5.0f) {
-            discreteZoomLevels.add(5.0f);
-        }
-        if (maxZoom >= 10.0f) {
-            discreteZoomLevels.add(10.0f);
-        }
-        
-        Log.d("PINCH_NATIVE", "Loaded discrete zoom levels: " + discreteZoomLevels);
     }
 
     private void bindCameraSession() {
@@ -330,15 +179,6 @@ public class CameraMultiCapturePlugin extends Plugin {
 
         camera.getCameraControl().setZoomRatio(currentConfig.zoomRatio);
         previewView.setKeepScreenOn(true);
-        
-        // Setup pinch-to-zoom if enabled and not already set up
-        if (currentConfig.pinchToZoomEnabled && scaleGestureDetector == null) {
-            setupPinchToZoom();
-            // Reload discrete zoom levels if needed
-            if (currentConfig.pinchToZoomLockToNearestStep) {
-                loadDiscreteZoomLevels();
-            }
-        }
 
     }
 

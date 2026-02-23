@@ -53,11 +53,6 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     let sessionQueue = DispatchQueue(label: "camera.session.queue")
     var captureDelegate: PhotoCaptureDelegate?
     var motionManager: CMMotionManager?
-    var pinchGestureRecognizer: UIPinchGestureRecognizer?
-    var pinchToZoomEnabled: Bool = false
-    var pinchToZoomLockToNearestStep: Bool = false
-    var initialZoomOnGestureStart: CGFloat = 1.0
-    var discreteZoomLevels: [CGFloat] = []
 
     @objc func start(_ call: CAPPluginCall) {
         print("Received data from JS: \(call.dictionaryRepresentation)")
@@ -89,16 +84,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let zoom = CGFloat(call.getFloat("zoom") ?? 1.0)
         let jpegQuality = CGFloat(call.getFloat("jpegQuality") ?? 0.8)
         let autofocus = call.getBool("autoFocus") ?? true
-        
-        // Handle pinch-to-zoom options
-        if let pinchToZoomOptions = call.getObject("pinchToZoom") {
-            self.pinchToZoomEnabled = (pinchToZoomOptions["enabled"] as? Bool) ?? false
-            self.pinchToZoomLockToNearestStep = (pinchToZoomOptions["lockToNearestStep"] as? Bool) ?? false
-        } else {
-            self.pinchToZoomEnabled = false
-            self.pinchToZoomLockToNearestStep = false
-        }
-        
+
         let orientation: AVCaptureVideoOrientation
         if let rotation = call.getInt("rotation") {
             switch rotation {
@@ -148,12 +134,6 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         stopMotionManager()
         
         DispatchQueue.main.async {
-            // Remove pinch gesture recognizer
-            if let pinch = self.pinchGestureRecognizer, let view = self.cameraPreviewView {
-                view.removeGestureRecognizer(pinch)
-            }
-            self.pinchGestureRecognizer = nil
-            
             self.captureSession?.stopRunning()
             self.previewLayer?.removeFromSuperlayer()
             self.captureSession = nil
@@ -300,12 +280,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                 if session.canAddInput(newInput) {
                     session.addInput(newInput)
                     self.currentInput = newInput
-                    
-                    // Re-setup pinch-to-zoom if enabled
-                    if self.pinchToZoomEnabled, let previewView = self.cameraPreviewView {
-                        self.setupPinchToZoom(on: previewView)
-                    }
-                    
+
                     call.resolve()
                 } else {
                     call.reject("Cannot add new camera input")
@@ -406,12 +381,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                 try device.lockForConfiguration()
                 device.videoZoomFactor = 1.0
                 device.unlockForConfiguration()
-                
-                // Re-setup pinch-to-zoom if enabled
-                if self.pinchToZoomEnabled, let previewView = self.cameraPreviewView {
-                    self.setupPinchToZoom(on: previewView)
-                }
-                
+
                 session.commitConfiguration()
                 call.resolve()
             } else {
@@ -548,11 +518,6 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             previewView.layer.addSublayer(videoLayer)
             self.previewLayer = videoLayer
             self.cameraPreviewView = previewView
-
-            // Setup pinch-to-zoom if enabled
-            if self.pinchToZoomEnabled {
-                self.setupPinchToZoom(on: previewView)
-            }
 
             if let parentView = webView.superview {
                 parentView.bringSubviewToFront(webView)
@@ -949,110 +914,6 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     private func stopMotionManager() {
         motionManager?.stopAccelerometerUpdates()
         motionManager = nil
-    }
-    
-    private func setupPinchToZoom(on view: UIView) {
-        // Remove existing gesture recognizer if any
-        if let existingPinch = self.pinchGestureRecognizer {
-            view.removeGestureRecognizer(existingPinch)
-        }
-        
-        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinchGesture(_:)))
-        view.isUserInteractionEnabled = true
-        view.addGestureRecognizer(pinch)
-        self.pinchGestureRecognizer = pinch
-        
-        // Load discrete zoom levels if lock-to-nearest is enabled
-        if self.pinchToZoomLockToNearestStep {
-            self.loadDiscreteZoomLevels()
-        }
-    }
-    
-    @objc private func handlePinchGesture(_ gesture: UIPinchGestureRecognizer) {
-        guard let device = currentInput?.device else { return }
-        
-        switch gesture.state {
-        case .began:
-            initialZoomOnGestureStart = device.videoZoomFactor
-            
-            // Load discrete zoom levels if lock-to-nearest is enabled
-            if self.pinchToZoomLockToNearestStep {
-                self.loadDiscreteZoomLevels()
-            }
-            
-        case .changed:
-            var newZoom = initialZoomOnGestureStart * gesture.scale
-            let minZoom: CGFloat = 1.0
-            let maxZoom = device.activeFormat.videoMaxZoomFactor
-            
-            newZoom = max(minZoom, min(newZoom, maxZoom))
-            
-            do {
-                try device.lockForConfiguration()
-                device.videoZoomFactor = newZoom
-                device.unlockForConfiguration()
-            } catch {
-                print("Failed to set zoom: \(error)")
-            }
-            
-        case .ended, .cancelled:
-            guard self.pinchToZoomLockToNearestStep, !self.discreteZoomLevels.isEmpty else { return }
-            
-            let current = device.videoZoomFactor
-            let nearest = self.discreteZoomLevels.min(by: { abs($0 - current) < abs($1 - current) }) ?? current
-            
-            do {
-                try device.lockForConfiguration()
-                device.videoZoomFactor = nearest
-                device.unlockForConfiguration()
-                print("Locked to nearest zoom: \(nearest)")
-            } catch {
-                print("Failed to snap zoom: \(error)")
-            }
-            
-        default:
-            break
-        }
-    }
-    
-    private func loadDiscreteZoomLevels() {
-        self.discreteZoomLevels.removeAll()
-        
-        guard let device = currentInput?.device else { return }
-        
-        let minZoom = device.minAvailableVideoZoomFactor
-        let maxZoom = device.activeFormat.videoMaxZoomFactor
-        
-        // Build discrete levels based on device capabilities
-        // Add ultra-wide if available
-        if minZoom < 1.0 {
-            if minZoom > 0.6 && minZoom < 0.8 {
-                self.discreteZoomLevels.append(0.7)
-            } else if minZoom < 0.6 {
-                self.discreteZoomLevels.append(0.5)
-            } else {
-                self.discreteZoomLevels.append(minZoom)
-            }
-        }
-        
-        // Always add 1x
-        self.discreteZoomLevels.append(1.0)
-        
-        // Add telephoto presets based on max zoom
-        if maxZoom >= 2.0 {
-            self.discreteZoomLevels.append(2.0)
-        }
-        if maxZoom >= 3.0 {
-            self.discreteZoomLevels.append(3.0)
-        }
-        if maxZoom >= 5.0 {
-            self.discreteZoomLevels.append(5.0)
-        }
-        if maxZoom >= 10.0 {
-            self.discreteZoomLevels.append(10.0)
-        }
-        
-        print("Loaded discrete zoom levels: \(self.discreteZoomLevels)")
     }
     
     private func detectCurrentOrientation() -> AVCaptureVideoOrientation {
