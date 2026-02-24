@@ -76,12 +76,6 @@ export interface PinchToZoomOptions {
    */
   enabled?: boolean;
   /**
-   * Preferred handling mode for pinch gestures.
-   * Currently, when pinch is enabled, all pinch handling is done in JavaScript
-   * in the overlay layer, and this flag is kept only for API compatibility
-   */
-  useNative?: boolean;
-  /**
    * Lock zoom to nearest preset level when gesture ends.
    * If false, allows continuous/nonstandard zoom factors
    * @default false
