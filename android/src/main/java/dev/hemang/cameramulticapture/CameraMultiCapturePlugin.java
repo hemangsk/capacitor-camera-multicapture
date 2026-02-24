@@ -118,8 +118,6 @@ public class CameraMultiCapturePlugin extends Plugin {
             bridge.getWebView().setBackgroundColor(Color.TRANSPARENT);
             bridge.getWebView().setAlpha(1.0f);
             bridge.getWebView().bringToFront();
-            // Don’t consume touch in the listener so the WebView’s default handling (e.g. overlay / pinch) still runs
-            bridge.getWebView().setOnTouchListener((v, event) -> false);
         }
 
         rootView.requestLayout();
