@@ -79,7 +79,6 @@ export interface CameraOverlayUIOptions {
   showShotCounter?: boolean;
   pinchToZoom?: {
     enabled?: boolean;
-    useNative?: boolean;
     lockToNearestStep?: boolean;
   };
 }
