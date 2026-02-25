@@ -84,6 +84,8 @@ export function createPositionContainers(overlay: HTMLElement): PositionContaine
     top: '10px',
     right: '10px',
     display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
     gap: '10px',
     zIndex: '2'
   });

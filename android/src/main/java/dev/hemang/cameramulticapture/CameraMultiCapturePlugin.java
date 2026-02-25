@@ -77,6 +77,7 @@ public class CameraMultiCapturePlugin extends Plugin {
     private CameraConfig currentConfig = new CameraConfig();
     private OrientationEventListener orientationEventListener;
     private int lastKnownOrientation = 0; // 0=portrait, 90=landscape-left, 180=upside-down, 270=landscape-right
+    private boolean torchEnabled = false;
 
     private void ensurePreviewView() {
         if (previewView != null) return;
@@ -525,6 +526,16 @@ public class CameraMultiCapturePlugin extends Plugin {
             ? CameraSelector.LENS_FACING_FRONT
             : CameraSelector.LENS_FACING_BACK;
 
+        // If we are switching to the front camera, ensure the torch is turned off
+        if (currentConfig.lensFacing == CameraSelector.LENS_FACING_FRONT && torchEnabled && camera != null) {
+            try {
+                camera.getCameraControl().enableTorch(false);
+            } catch (Exception e) {
+                Log.w("CameraMultiCapture", "Failed to disable torch on camera switch: " + e.getMessage());
+            }
+            torchEnabled = false;
+        }
+
         try {
             getActivity().runOnUiThread(() -> {
                 bindCameraSession();
@@ -861,6 +872,38 @@ public class CameraMultiCapturePlugin extends Plugin {
 
         JSObject result = new JSObject();
         result.put("flashMode", flashMode);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void setTorch(PluginCall call) {
+        Boolean enabled = call.getBoolean("enabled");
+        if (enabled == null) {
+            call.reject("Missing enabled parameter");
+            return;
+    }
+
+    getActivity().runOnUiThread(() -> {
+        try {
+            if (camera == null) {
+                call.reject("Camera not initialized");
+                return;
+            }
+
+            // Torch is controlled via CameraX CameraControl to ensure proper lifecycle handling.
+            camera.getCameraControl().enableTorch(enabled);
+            torchEnabled = enabled;
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Failed to set torch: " + e.getMessage(), e);
+        }
+    });
+}
+
+    @PluginMethod
+    public void getTorch(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("enabled", torchEnabled);
         call.resolve(result);
     }
 

@@ -34,6 +34,8 @@ export class OverlayManager {
   private zoomConfig: any = null;
   private shotCounter: HTMLElement | null = null;
   private shotCount: number = 0;
+  private torchButton: HTMLButtonElement | null = null;
+  private torchConfig: any | null = null;
 
   constructor(plugin: CameraMultiCapturePlugin, options: CameraOverlayUIOptions) {
     this.options = options;
@@ -245,6 +247,10 @@ export class OverlayManager {
       this.createSwitchCameraButton(buttons.switchCamera, positions.topRight);
     }
 
+    if (buttons.torch) {
+      this.createTorchButton(buttons.torch, positions.topRight);
+    }
+
     if (buttons.flash) {
       this.createFlashButton(buttons.flash, positions.topLeft);
     }
@@ -269,6 +275,7 @@ export class OverlayManager {
     switchBtn.onclick = async () => {
       try {
         await this.cameraController.switchCamera();
+        await this.refreshTorchIconFromState();
       } catch (error) {
         console.error('Failed to switch camera', error);
       }
@@ -277,7 +284,59 @@ export class OverlayManager {
     container.appendChild(switchBtn);
   }
 
-   /**
+  /**
+   * Creates the torch (flashlight) toggle button, stacked below the switch camera button.
+   */
+  private createTorchButton(config: any, container: HTMLElement): void {
+    const torchBtn = createButton({
+      ...config,
+      icon: config.offIcon,
+    });
+
+    this.torchButton = torchBtn;
+    this.torchConfig = config;
+
+    const updateTorchIcon = async (enabled: boolean) => {
+      const icon = enabled ? config.onIcon : config.offIcon;
+      if (icon) {
+        await setButtonIcon(torchBtn, icon);
+      }
+    };
+
+    torchBtn.onclick = async () => {
+      try {
+        const enabled = await this.cameraController.toggleTorch();
+        await updateTorchIcon(enabled);
+      } catch (error) {
+        console.error('Failed to toggle torch', error);
+      }
+    };
+
+    // Best-effort initial state sync; defaults to off if call fails.
+    this.cameraController.getTorch()
+      .then((enabled) => updateTorchIcon(enabled))
+      .catch(() => { /* initial sync is optional */ });
+
+    container.appendChild(torchBtn);
+  }
+
+  /**
+   * Refreshes the torch icon based on current native torch state.
+   */
+  private async refreshTorchIconFromState(): Promise<void> {
+    if (!this.torchButton || !this.torchConfig) return;
+    try {
+      const enabled = await this.cameraController.getTorch();
+      const icon = enabled ? this.torchConfig.onIcon : this.torchConfig.offIcon;
+      if (icon) {
+        await setButtonIcon(this.torchButton, icon);
+      }
+    } catch {
+      // state sync failure is non-blocking; keep current icon
+    }
+  }
+
+  /**
    * Creates zoom buttons after camera initialization
    */
    private async createZoomButtonsAfterInit(): Promise<void> {
@@ -448,7 +507,9 @@ export class OverlayManager {
    * Cleans up resources
    */
   private cleanup(): void {
-    this.cameraController.stop().catch(err => {
+    this.torchButton = null;
+    this.torchConfig = null;
+    this.cameraController.stop().catch((err) => {
       console.warn('Error stopping camera', err);
     });
 
@@ -459,8 +520,6 @@ export class OverlayManager {
     this.overlayElement = null;
     this.galleryController = null;
     this.isActive = false;
-    this.zoomContainer = null;
-    this.zoomConfig = null;
     this.shotCounter = null;
     this.shotCount = 0; // Reset shot count for next session
     if (this.bodyBackgroundColor) {

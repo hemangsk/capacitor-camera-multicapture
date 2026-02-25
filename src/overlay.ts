@@ -18,6 +18,7 @@ function convertButtonsConfig(buttons?: CameraOverlayButtons): Partial<ButtonsCo
     switchCamera: buttons.switchCamera,
     zoom: buttons.zoom,
     flash: buttons.flash,
+    torch: buttons.torch,
   };
 }
 

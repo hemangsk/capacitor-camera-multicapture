@@ -55,6 +55,7 @@ export interface ButtonsConfig {
   switchCamera?: IconButtonConfig;
   zoom?: ZoomButtonConfig;
   flash?: ToggleButtonConfig;
+  torch?: ToggleButtonConfig;
 }
 
 /**
