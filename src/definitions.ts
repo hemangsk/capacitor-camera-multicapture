@@ -60,6 +60,16 @@ export interface CameraOverlayButtons {
     style?: ButtonStyle;
     position?: 'topLeft' | 'topRight' | 'custom';
   };
+  /**
+   * Torch (continuous flashlight) toggle button.
+   * Independent of capture flash and typically shown below switchCamera.
+   */
+  torch?: {
+    onIcon?: string;
+    offIcon?: string;
+    style?: ButtonStyle;
+    position?: 'topLeft' | 'topRight' | 'custom';
+  };
 }
 
 export interface CameraPreviewRect {
@@ -202,6 +212,17 @@ export interface CameraMultiCapturePlugin {
    * Gets the current flash mode.
    */
   getFlash(): Promise<{ flashMode: 'on' | 'off' | 'auto' }>;
+
+  /**
+   * Sets the torch (continuous flashlight) on or off.
+   * Torch is independent of the capture flash setting.
+   */
+  setTorch(options: { enabled: boolean }): Promise<void>;
+
+  /**
+   * Gets whether the torch is currently enabled.
+   */
+  getTorch(): Promise<{ enabled: boolean }>;
 
   /**
    * Check camera and photo library permissions

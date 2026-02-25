@@ -23,6 +23,7 @@ export class CameraController {
   private options: CameraOverlayUIOptions;
   private flashMode: 'on' | 'off' | 'auto' = 'off';
   private flashAutoModeEnabled: boolean = true;
+  private torchEnabled = false;
   private availableCameras: {
     hasUltrawide: boolean;
     hasWide: boolean;
@@ -228,6 +229,43 @@ export class CameraController {
    */
   isFlashAutoModeEnabled(): boolean {
     return this.flashAutoModeEnabled;
+  }
+
+  /**
+   * Sets the torch (flashlight) on or off.
+   */
+  async setTorch(enabled: boolean): Promise<void> {
+    try {
+      await this.plugin.setTorch({ enabled });
+      this.torchEnabled = enabled;
+    } catch (error) {
+      console.error('Failed to set torch', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Gets whether the torch is currently enabled.
+   */
+  async getTorch(): Promise<boolean> {
+    try {
+      const result = await this.plugin.getTorch();
+      this.torchEnabled = result.enabled;
+      return this.torchEnabled;
+    } catch (error) {
+      console.error('Failed to get torch state', error);
+      return this.torchEnabled;
+    }
+  }
+
+  /**
+   * Toggles the torch state and returns the new value.
+   */
+  async toggleTorch(): Promise<boolean> {
+    const currentlyEnabled = await this.getTorch();
+    const next = !currentlyEnabled;
+    await this.setTorch(next);
+    return next;
   }
 
   /**
