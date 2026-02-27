@@ -33,6 +33,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "updatePreviewRect", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setFlash", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getFlash", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setTorch", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getTorch", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getAvailableZoomLevels", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getAvailableCameras", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "switchToPhysicalCamera", returnType: CAPPluginReturnPromise),
@@ -264,11 +266,24 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func switchCamera(_ call: CAPPluginCall) {
         guard let session = captureSession,
-            let currentInput = currentInput
+              let currentInput = currentInput
         else {
             call.reject("Camera not initialized")
             return
         }
+
+        // Turn off torch on the current device before switching cameras
+        let device = currentInput.device
+        if device.hasTorch && device.torchMode == .on {
+            do {
+                try device.lockForConfiguration()
+                device.torchMode = .off
+                device.unlockForConfiguration()
+            } catch {
+                // Ignore failure here; we are switching cameras anyway
+            }
+        }
+
         session.beginConfiguration()
         session.removeInput(currentInput)
         self.cameraPosition = (self.cameraPosition == .back) ? .front : .back
@@ -634,6 +649,34 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         }
         
         call.resolve(["flashMode": modeString])
+    }
+
+    @objc func setTorch(_ call: CAPPluginCall) {
+        guard let enabled = call.getBool("enabled") else {
+            call.reject("Missing enabled parameter")
+            return
+        }
+        guard let device = currentInput?.device, device.hasTorch, device.isTorchAvailable else {
+            call.reject("Torch not available on current camera")
+            return
+        }
+        do {
+            try device.lockForConfiguration()
+            device.torchMode = enabled ? .on : .off
+            device.unlockForConfiguration()
+            call.resolve()
+        } catch {
+            call.reject("Failed to set torch: \(error.localizedDescription)")
+        }
+    }
+
+    @objc func getTorch(_ call: CAPPluginCall) {
+        guard let device = currentInput?.device, device.hasTorch else {
+            call.resolve(["enabled": false])
+            return
+        }
+        let enabled = device.torchMode == .on
+        call.resolve(["enabled": enabled])
     }
 
     @objc func queueBackgroundUpload(_ call: CAPPluginCall) {
