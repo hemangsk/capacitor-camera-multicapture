@@ -83,7 +83,7 @@ public class CameraMultiCapturePlugin extends Plugin {
         if (previewView != null) return;
 
         previewView = new PreviewView(getContext());
-        
+
         android.util.DisplayMetrics displayMetrics = new android.util.DisplayMetrics();
         getActivity().getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
         float density = displayMetrics.density;
