@@ -3,7 +3,7 @@
  */
 import { Capacitor } from '@capacitor/core';
 import type { CameraImageData, CameraMultiCapturePlugin } from '../definitions';
-import { CameraOverlayUIOptions } from '../types/ui-types';
+import type { CameraOverlayUIOptions } from '../types/ui-types';
 
 /**
  * Interface for camera rectangle dimensions
@@ -24,6 +24,7 @@ export class CameraController {
   private flashMode: 'on' | 'off' | 'auto' = 'off';
   private flashAutoModeEnabled: boolean = true;
   private torchEnabled = false;
+  private currentZoom = 1;
   private availableCameras: {
     hasUltrawide: boolean;
     hasWide: boolean;
@@ -45,7 +46,7 @@ export class CameraController {
   async initialize(containerElement: HTMLElement, quality: number): Promise<void> {
     try {
       const rect = containerElement.getBoundingClientRect();
-      await this.plugin.start({
+      const startOptions: any = {
         quality,
         direction: 'back',
         previewRect: {
@@ -55,7 +56,9 @@ export class CameraController {
           y: rect.y
         },
         containerId: containerElement.id || 'camera-container',
-      });
+      };
+
+      await this.plugin.start(startOptions);
     } catch (error) {
       console.error('Failed to start camera', error);
       throw error;
@@ -87,11 +90,19 @@ export class CameraController {
    */
   async setZoom(level: number): Promise<void> {
     try {
+      this.currentZoom = level;   // important
       await this.plugin.setZoom({ zoom: level });
     } catch (error) {
       console.error('Failed to set zoom', error);
       throw error;
     }
+  }
+
+  /**
+   * Gets the current zoom level (tracked after setZoom calls)
+   */
+  getCurrentZoom(): number {
+    return this.currentZoom;
   }
 
   /**

@@ -33,7 +33,8 @@ export const initialize = (options: CameraOverlayOptions): Promise<CameraOverlay
     buttons: convertButtonsConfig(options.buttons),
     maxCaptures: options.maxCaptures,
     flashAutoModeEnabled: options.flashAutoModeEnabled,
-    showShotCounter: options.showShotCounter ?? true // Default to true for backward compatibility
+    showShotCounter: options.showShotCounter ?? true, // Default to true for backward compatibility
+    pinchToZoom: options.pinchToZoom,
   };
   
   const overlayManager = new OverlayManager(plugin, uiOptions);
