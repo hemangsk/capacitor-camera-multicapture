@@ -5,6 +5,10 @@ import type { CameraImageData, CameraVideoData, CapturedImage, CapturedVideo, Ph
 import { createThumbnailContainer } from '../ui/ui-factory';
 import { openImagePreview, openVideoPreview } from '../ui/media-viewer';
 
+type CaptureEntry =
+  | { type: 'image'; item: CapturedImage }
+  | { type: 'video'; item: CapturedVideo };
+
 /**
  * Manages gallery operations and captured images
  */
@@ -12,6 +16,7 @@ export class GalleryController {
   private galleryElement: HTMLElement;
   private images: CapturedImage[] = [];
   private videos: CapturedVideo[] = [];
+  private captureOrder: CaptureEntry[] = [];
   private thumbnailStyle: { width?: string; height?: string };
   private onImageRemoved: (images: CapturedImage[]) => void;
   private onPhotoAdded?: (event: PhotoAddedEvent) => void;
@@ -40,8 +45,9 @@ export class GalleryController {
     const newImage: CapturedImage = { id, data: imageData };
 
     this.images.push(newImage);
+    this.captureOrder.push({ type: 'image', item: newImage });
     this.renderGallery();
-    this.scrollToLatestImage();
+    this.scrollToLatest();
 
     // Trigger photoAdded callback with detailed logging
     const eventData: PhotoAddedEvent = {
@@ -74,6 +80,9 @@ export class GalleryController {
   removeImage(imageId: string): void {
     const imageToRemove = this.images.find(img => img.id === imageId);
     this.images = this.images.filter(img => img.id !== imageId);
+    this.captureOrder = this.captureOrder.filter(
+      entry => !(entry.type === 'image' && entry.item.id === imageId)
+    );
     this.renderGallery();
     this.onImageRemoved(this.images);
 
@@ -110,8 +119,9 @@ export class GalleryController {
     const newVideo: CapturedVideo = { id, data: videoData };
 
     this.videos.push(newVideo);
+    this.captureOrder.push({ type: 'video', item: newVideo });
     this.renderGallery();
-    this.scrollToLatestImage();
+    this.scrollToLatest();
   }
 
   /**
@@ -119,6 +129,9 @@ export class GalleryController {
    */
   removeVideo(videoId: string): void {
     this.videos = this.videos.filter(vid => vid.id !== videoId);
+    this.captureOrder = this.captureOrder.filter(
+      entry => !(entry.type === 'video' && entry.item.id === videoId)
+    );
     this.renderGallery();
   }
 
@@ -130,6 +143,7 @@ export class GalleryController {
     const imagesToRemove = [...this.images];
     this.images = [];
     this.videos = [];
+    this.captureOrder = [];
     this.renderGallery();
     this.onImageRemoved(this.images);
 
@@ -176,46 +190,43 @@ export class GalleryController {
   }
 
   /**
-   * Renders the gallery with current images
+   * Renders the gallery in chronological capture order
    */
   private renderGallery(): void {
     this.galleryElement.innerHTML = '';
 
-    this.images.forEach(image => {
-      const src = image.data.webPath || image.data.uri;
-      const thumbnailContainer = createThumbnailContainer(
-        image.data.thumbnail,
-        this.thumbnailStyle,
-        () => this.removeImage(image.id),
-        { onTap: () => openImagePreview(src, image.data.thumbnail) }
-      );
-
-      this.galleryElement.appendChild(thumbnailContainer);
-    });
-
-    this.videos.forEach(video => {
-      const src = video.data.webPath || video.data.uri;
-      const thumbnailContainer = createThumbnailContainer(
-        video.data.thumbnail,
-        this.thumbnailStyle,
-        () => this.removeVideo(video.id),
-        {
-          isVideo: true,
-          duration: video.data.duration,
-          onTap: () => openVideoPreview(src, video.data.thumbnail),
-        }
-      );
-
-      this.galleryElement.appendChild(thumbnailContainer);
+    this.captureOrder.forEach(entry => {
+      if (entry.type === 'image') {
+        const image = entry.item;
+        const src = image.data.webPath || image.data.uri;
+        const thumbnailContainer = createThumbnailContainer(
+          image.data.thumbnail,
+          this.thumbnailStyle,
+          () => this.removeImage(image.id),
+          { onTap: () => openImagePreview(src, image.data.thumbnail) }
+        );
+        this.galleryElement.appendChild(thumbnailContainer);
+      } else {
+        const video = entry.item;
+        const src = video.data.webPath || video.data.uri;
+        const thumbnailContainer = createThumbnailContainer(
+          video.data.thumbnail,
+          this.thumbnailStyle,
+          () => this.removeVideo(video.id),
+          {
+            isVideo: true,
+            duration: video.data.duration,
+            onTap: () => openVideoPreview(src, video.data.thumbnail),
+          }
+        );
+        this.galleryElement.appendChild(thumbnailContainer);
+      }
     });
   }
-  /**
-     * Scrolls the gallery to show the most recently added image
-     */
-  private scrollToLatestImage(): void {
-    if (this.images.length === 0) return;
 
-    // Use requestAnimationFrame to ensure DOM is updated
+  private scrollToLatest(): void {
+    if (this.captureOrder.length === 0) return;
+
     requestAnimationFrame(() => {
       this.galleryElement.scrollTo({
         left: this.galleryElement.scrollWidth,
