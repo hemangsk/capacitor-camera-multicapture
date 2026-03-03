@@ -83,6 +83,7 @@
   },
   "dependencies": {
     "@capacitor/filesystem": "7.1.1",
+    "bigger-picture": "github:hemangsk/bigger-picture#css-text-export",
     "lodash": "4.17.21"
   }
 }
