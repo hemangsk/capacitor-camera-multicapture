@@ -32,6 +32,7 @@ export const initialize = (options: CameraOverlayOptions): Promise<CameraOverlay
     thumbnailStyle: options.thumbnailStyle,
     buttons: convertButtonsConfig(options.buttons),
     maxCaptures: options.maxCaptures,
+    maxRecordingDuration: options.maxRecordingDuration,
     flashAutoModeEnabled: options.flashAutoModeEnabled,
     showShotCounter: options.showShotCounter ?? true, // Default to true for backward compatibility
     pinchToZoom: options.pinchToZoom,

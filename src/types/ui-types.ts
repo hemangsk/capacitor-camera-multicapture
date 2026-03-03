@@ -76,6 +76,7 @@ export interface CameraOverlayUIOptions {
   thumbnailStyle?: ThumbnailStyle;
   quality?: number;
   maxCaptures?: number;
+  maxRecordingDuration?: number;
   flashAutoModeEnabled?: boolean;
   showShotCounter?: boolean;
   pinchToZoom?: {
