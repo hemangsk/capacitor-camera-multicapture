@@ -115,7 +115,7 @@ export function applyButtonStyle(element: HTMLButtonElement, style: ButtonStyle)
 export function createThumbnailContainer(
   thumbnailData: string, 
   thumbnailStyle: { width?: string; height?: string },
-  onRemove: () => void,
+  onRemove: (() => void) | null,
   options?: { isVideo?: boolean; duration?: number; onTap?: () => void }
 ): HTMLElement {
   const thumbnailContainer = document.createElement('div');
@@ -155,8 +155,6 @@ export function createThumbnailContainer(
       tapHandler();
     });
   }
-
-  const removeBtn = createRemoveButton(onRemove);
 
   thumbnailContainer.appendChild(thumbnail);
 
@@ -202,7 +200,10 @@ export function createThumbnailContainer(
     }
   }
 
-  thumbnailContainer.appendChild(removeBtn);
+  if (onRemove) {
+    const removeBtn = createRemoveButton(onRemove);
+    thumbnailContainer.appendChild(removeBtn);
+  }
   
   return thumbnailContainer;
 }
