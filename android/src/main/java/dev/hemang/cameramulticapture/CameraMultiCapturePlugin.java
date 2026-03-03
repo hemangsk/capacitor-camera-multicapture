@@ -17,6 +17,7 @@ import android.view.OrientationEventListener;
 import android.view.Surface;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.media.MediaMetadataRetriever;
 
 import androidx.annotation.NonNull;
 import androidx.camera.core.Camera;
@@ -26,6 +27,15 @@ import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ImageCaptureException;
 import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.video.FileOutputOptions;
+import androidx.camera.video.FallbackStrategy;
+import androidx.camera.video.PendingRecording;
+import androidx.camera.video.Quality;
+import androidx.camera.video.QualitySelector;
+import androidx.camera.video.Recorder;
+import androidx.camera.video.Recording;
+import androidx.camera.video.VideoCapture;
+import androidx.camera.video.VideoRecordEvent;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 
@@ -47,16 +57,14 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.util.concurrent.Executor;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.ArrayList;
 
 import org.json.JSONArray;
 import androidx.work.*;
 import java.util.concurrent.TimeUnit;
 import java.util.UUID;
-import android.net.Uri;
-import java.io.File;
 
 @CapacitorPlugin(
     name = "CameraMultiCapture",
@@ -65,13 +73,18 @@ import java.io.File;
         @Permission(strings = {
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.WRITE_EXTERNAL_STORAGE
-        }, alias = "photos")
+        }, alias = "photos"),
+        @Permission(strings = {Manifest.permission.RECORD_AUDIO}, alias = "audio")
     }
 )
 public class CameraMultiCapturePlugin extends Plugin {
 
     private PreviewView previewView;
     private ImageCapture imageCapture;
+    private VideoCapture<Recorder> videoCapture;
+    private Recording activeRecording;
+    private PluginCall pendingVideoStopCall;
+    private File currentVideoFile;
     private Camera camera;
     private ProcessCameraProvider cameraProvider;
     private CameraConfig currentConfig = new CameraConfig();
@@ -165,6 +178,16 @@ public class CameraMultiCapturePlugin extends Plugin {
         .setFlashMode(currentConfig.flashMode)
         .build();
 
+        Recorder recorder = new Recorder.Builder()
+            .setQualitySelector(
+                QualitySelector.fromOrderedList(
+                    Arrays.asList(Quality.FHD, Quality.HD, Quality.SD),
+                    FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
+                )
+            )
+            .build();
+        videoCapture = VideoCapture.withOutput(recorder);
+
         CameraSelector cameraSelector = new CameraSelector.Builder()
             .requireLensFacing(currentConfig.lensFacing)
             .build();
@@ -173,7 +196,8 @@ public class CameraMultiCapturePlugin extends Plugin {
             getActivity(),
             cameraSelector,
             preview,
-            imageCapture
+            imageCapture,
+            videoCapture
         );
 
         camera.getCameraControl().setZoomRatio(currentConfig.zoomRatio);
@@ -217,6 +241,11 @@ public class CameraMultiCapturePlugin extends Plugin {
         getActivity().runOnUiThread(() -> {
             try {
                 stopOrientationListener();
+
+                if (activeRecording != null) {
+                    activeRecording.stop();
+                    activeRecording = null;
+                }
                 
                 if (cameraProvider != null) {
                     cameraProvider.unbindAll();
@@ -295,6 +324,144 @@ public class CameraMultiCapturePlugin extends Plugin {
             );
         } catch (Exception e) {
             call.reject("Capture error: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void startVideoRecording(PluginCall call) {
+        if (videoCapture == null) {
+            call.reject("VideoCapture not initialized");
+            return;
+        }
+        if (activeRecording != null) {
+            call.reject("Video recording is already in progress");
+            return;
+        }
+        if (getPermissionState("audio") != PermissionState.GRANTED) {
+            call.reject("Microphone permission not granted. Please call requestPermissions() first.");
+            return;
+        }
+
+        int sensorOrientation = getRotationFromOrientation(lastKnownOrientation);
+        currentConfig.targetRotation = sensorOrientation;
+
+        try {
+            currentVideoFile = new File(getContext().getCacheDir(), "video_" + System.currentTimeMillis() + ".mp4");
+            FileOutputOptions.Builder outputOptionsBuilder = new FileOutputOptions.Builder(currentVideoFile);
+            if (currentConfig != null && currentConfig.maxRecordingDurationSeconds > 0) {
+                outputOptionsBuilder.setDurationLimitMillis(currentConfig.maxRecordingDurationSeconds * 1000L);
+            }
+            FileOutputOptions outputOptions = outputOptionsBuilder.build();
+            PendingRecording pendingRecording = videoCapture.getOutput()
+                .prepareRecording(getContext(), outputOptions)
+                .withAudioEnabled();
+
+            activeRecording = pendingRecording.start(
+                ContextCompat.getMainExecutor(getContext()),
+                event -> {
+                    if (event instanceof VideoRecordEvent.Finalize finalizeEvent) {
+                        handleVideoFinalize(finalizeEvent);
+                    }
+                }
+            );
+
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Failed to start video recording: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void stopVideoRecording(PluginCall call) {
+        if (activeRecording == null) {
+            call.reject("No active video recording to stop");
+            return;
+        }
+        pendingVideoStopCall = call;
+        activeRecording.stop();
+    }
+
+    private void handleVideoFinalize(VideoRecordEvent.Finalize finalizeEvent) {
+        PluginCall call = pendingVideoStopCall;
+        pendingVideoStopCall = null;
+
+        Recording recording = activeRecording;
+        activeRecording = null;
+        if (recording != null) {
+            recording.close();
+        }
+
+        if (call == null) {
+            return;
+        }
+
+        if (finalizeEvent.hasError()) {
+            call.reject("Video recording failed: " + finalizeEvent.getError());
+            return;
+        }
+
+        Uri outputUri = finalizeEvent.getOutputResults().getOutputUri();
+        if (outputUri == null || outputUri.toString().isEmpty()) {
+            outputUri = currentVideoFile != null ? Uri.fromFile(currentVideoFile) : null;
+        }
+        if (outputUri == null) {
+            call.reject("Video recording completed but no output URI is available");
+            return;
+        }
+
+        String thumbnail = generateVideoThumbnail(outputUri);
+        double duration = getVideoDurationSeconds(outputUri);
+
+        JSObject result = new JSObject();
+        JSObject videoData = new JSObject();
+        videoData.put("uri", outputUri.toString());
+        videoData.put("thumbnail", thumbnail != null ? thumbnail : "");
+        videoData.put("duration", duration);
+        result.put("value", videoData);
+        call.resolve(result);
+    }
+
+    private String generateVideoThumbnail(Uri videoUri) {
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        try {
+            retriever.setDataSource(getContext(), videoUri);
+            android.graphics.Bitmap bitmap = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+            if (bitmap == null) {
+                return null;
+            }
+            java.io.ByteArrayOutputStream stream = new java.io.ByteArrayOutputStream();
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, stream);
+            byte[] bytes = stream.toByteArray();
+            return "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP);
+        } catch (Exception e) {
+            Log.w("CameraMultiCapture", "Failed to generate video thumbnail: " + e.getMessage());
+            return null;
+        } finally {
+            try {
+                retriever.release();
+            } catch (IOException ignored) {
+                // best effort cleanup
+            }
+        }
+    }
+
+    private double getVideoDurationSeconds(Uri videoUri) {
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        try {
+            retriever.setDataSource(getContext(), videoUri);
+            String durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+            if (durationMs == null) {
+                return 0;
+            }
+            return Double.parseDouble(durationMs) / 1000.0;
+        } catch (Exception e) {
+            return 0;
+        } finally {
+            try {
+                retriever.release();
+            } catch (IOException ignored) {
+                // best effort cleanup
+            }
         }
     }
 
@@ -793,6 +960,10 @@ public class CameraMultiCapturePlugin extends Plugin {
         // Check photos/storage permission
         PermissionState photosState = getPermissionState("photos");
         result.put("photos", photosState.toString());
+
+        // Check microphone permission
+        PermissionState audioState = getPermissionState("audio");
+        result.put("audio", audioState.toString());
         
         call.resolve(result);
     }
@@ -801,8 +972,9 @@ public class CameraMultiCapturePlugin extends Plugin {
     public void requestPermissions(PluginCall call) {
         // Request all permissions that aren't already granted
         if (getPermissionState("camera") != PermissionState.GRANTED || 
-            getPermissionState("photos") != PermissionState.GRANTED) {
-            requestPermissionForAliases(new String[]{"camera", "photos"}, call, "permissionCallback");
+            getPermissionState("photos") != PermissionState.GRANTED ||
+            getPermissionState("audio") != PermissionState.GRANTED) {
+            requestPermissionForAliases(new String[]{"camera", "photos", "audio"}, call, "permissionCallback");
         } else {
             // All permissions already granted
             checkPermissions(call);
