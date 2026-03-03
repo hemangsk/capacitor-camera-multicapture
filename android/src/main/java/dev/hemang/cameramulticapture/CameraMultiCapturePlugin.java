@@ -325,7 +325,8 @@ public class CameraMultiCapturePlugin extends Plugin {
         }
 
         int quality = call.getInt("quality", currentConfig.jpegQuality);
-        
+        //Log.d("CameraMultiCapture", "Capture quality: " + quality + ", saveToGallery: " + currentConfig.saveToGallery);
+
         int sensorOrientation = getRotationFromOrientation(lastKnownOrientation);
         imageCapture.setTargetRotation(sensorOrientation);
         currentConfig.targetRotation = sensorOrientation;
@@ -370,6 +371,7 @@ public class CameraMultiCapturePlugin extends Plugin {
 
                     @Override
                     public void onError(@NonNull ImageCaptureException exception) {
+                        //Log.e("CameraMultiCapture", "=== CAPTURE ERROR: " + exception.getMessage() + " ===", exception);
                         call.reject("Photo capture failed: " + exception.getMessage());
                     }
                 }
