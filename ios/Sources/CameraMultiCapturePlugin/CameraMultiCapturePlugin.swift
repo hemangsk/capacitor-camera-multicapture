@@ -84,7 +84,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let zoom = CGFloat(call.getFloat("zoom") ?? 1.0)
         let jpegQuality = CGFloat(call.getFloat("jpegQuality") ?? 0.8)
         let autofocus = call.getBool("autoFocus") ?? true
-        
+
         let orientation: AVCaptureVideoOrientation
         if let rotation = call.getInt("rotation") {
             switch rotation {
@@ -280,6 +280,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                 if session.canAddInput(newInput) {
                     session.addInput(newInput)
                     self.currentInput = newInput
+
                     call.resolve()
                 } else {
                     call.reject("Cannot add new camera input")
@@ -380,7 +381,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                 try device.lockForConfiguration()
                 device.videoZoomFactor = 1.0
                 device.unlockForConfiguration()
-                
+
                 session.commitConfiguration()
                 call.resolve()
             } else {

@@ -77,4 +77,8 @@ export interface CameraOverlayUIOptions {
   maxCaptures?: number;
   flashAutoModeEnabled?: boolean;
   showShotCounter?: boolean;
+  pinchToZoom?: {
+    enabled?: boolean;
+    lockToNearestStep?: boolean;
+  };
 }

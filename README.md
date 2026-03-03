@@ -169,6 +169,49 @@ const result = await initialize({
 });
 ```
 
+#### Pinch-to-Zoom with Zoom Button Sync
+
+The overlay supports a JavaScript-based pinch-to-zoom gesture on both Android and iOS.
+
+When enabled:
+
+- Users can pinch in/out anywhere on the camera preview.
+- The current zoom level is clamped to the device’s supported zoom range.
+- Zoom buttons (e.g. 0.7x, 1x, 2x) stay in sync with the active zoom level.
+- If `lockToNearestStep` is `true`, the zoom snaps to the nearest preset level when the pinch ends.
+
+```typescript
+
+import { initialize, CameraOverlayResult } from "camera-multi-capture";
+const result: CameraOverlayResult = await initialize({
+  containerId: "camera-container",
+  quality: 90,
+  // Enable JS pinch-to-zoom
+  pinchToZoom: {
+    enabled: true,
+    lockToNearestStep: true, // Snap to nearest preset (e.g. 0.7x, 1x, 2x)
+  },
+  buttons: {
+    // Optional: smart zoom buttons that are kept in sync with pinch
+    zoom: {
+      levels: [0.7, 1, 2, 3], // Example zoom steps; plugin may override with device-specific smart levels
+      style: {
+        radius: 30,
+        backgroundColor: "rgba(0,0,0,0.5)",
+        color: "#ffffff",
+        padding: "10px",
+        size: 24,
+      },
+    },
+  },
+});
+```
+**Notes:**
+
+- Pinch handling is implemented entirely in the overlay layer (JavaScript), independent of native gesture recognizers.
+- The plugin still uses native camera APIs (CameraX / AVFoundation) for the actual zoom, but all gesture detection runs on the web side.
+- If `pinchToZoom` is omitted or `enabled` is `false`, pinch gestures are ignored and only the zoom buttons are used.
+
 #### Advanced Button Styling with Box Shadows and Filters
 
 ```typescript
@@ -402,6 +445,7 @@ Structure for image data returned by the camera
 | **`maxCaptures`**    | <code>number</code>                                                   |
 | **`flashAutoModeEnabled`** | <code>boolean</code>                                             |
 | **`showShotCounter`** | <code>boolean</code>                                                  |
+| **`pinchToZoom`**    | <code>{ enabled?: boolean; lockToNearestStep?: boolean; }</code>      |
 
 
 #### CameraOverlayButtons
