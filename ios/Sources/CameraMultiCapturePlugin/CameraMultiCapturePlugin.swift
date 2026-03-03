@@ -28,6 +28,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "start", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "capture", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "startVideoRecording", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "stopVideoRecording", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setZoom", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "switchCamera", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updatePreviewRect", returnType: CAPPluginReturnPromise),
@@ -47,6 +49,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var captureSession: AVCaptureSession?
     var currentInput: AVCaptureDeviceInput?
     var photoOutput: AVCapturePhotoOutput?
+    var movieOutput: AVCaptureMovieFileOutput?
     var previewLayer: AVCaptureVideoPreviewLayer?
     var cameraPreviewView: UIView?
     var cameraPosition: AVCaptureDevice.Position = .back
@@ -54,7 +57,10 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var currentOrientation: AVCaptureVideoOrientation = .portrait
     let sessionQueue = DispatchQueue(label: "camera.session.queue")
     var captureDelegate: PhotoCaptureDelegate?
+    var videoCaptureDelegate: VideoCaptureDelegate?
+    var pendingVideoStopCall: CAPPluginCall?
     var motionManager: CMMotionManager?
+    var maxRecordingDurationSeconds: Double = 0
 
     @objc func start(_ call: CAPPluginCall) {
         print("Received data from JS: \(call.dictionaryRepresentation)")
@@ -82,10 +88,11 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let position =
             (call.getString("cameraPosition") == "front") ? AVCaptureDevice.Position.front : .back
         let qualityName = call.getString("captureMode") ?? "high"
-        let qualityPreset: AVCaptureSession.Preset = (qualityName == "low") ? .high : .photo
+        let qualityPreset: AVCaptureSession.Preset = (qualityName == "low") ? .medium : .high
         let zoom = CGFloat(call.getFloat("zoom") ?? 1.0)
         let jpegQuality = CGFloat(call.getFloat("jpegQuality") ?? 0.8)
         let autofocus = call.getBool("autoFocus") ?? true
+        let maxRecordingDuration = Double(call.getFloat("maxRecordingDuration") ?? 0)
 
         let orientation: AVCaptureVideoOrientation
         if let rotation = call.getInt("rotation") {
@@ -116,6 +123,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         self.cameraPosition = config.cameraPosition
         self.currentFlashMode = config.flashMode
         self.currentOrientation = config.orientation
+        self.maxRecordingDurationSeconds = maxRecordingDuration > 0 ? maxRecordingDuration : 0
 
         self.sessionQueue.async {
             do {
@@ -136,11 +144,17 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         stopMotionManager()
         
         DispatchQueue.main.async {
+            if self.movieOutput?.isRecording == true {
+                self.movieOutput?.stopRecording()
+            }
             self.captureSession?.stopRunning()
             self.previewLayer?.removeFromSuperlayer()
             self.captureSession = nil
             self.currentInput = nil
             self.photoOutput = nil
+            self.movieOutput = nil
+            self.videoCaptureDelegate = nil
+            self.pendingVideoStopCall = nil
             call.resolve()
         }
     }
@@ -193,6 +207,105 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         self.captureDelegate = delegate
 
         photoOutput.capturePhoto(with: settings, delegate: delegate)
+    }
+
+    @objc func startVideoRecording(_ call: CAPPluginCall) {
+        let audioAuthStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        if audioAuthStatus == .denied || audioAuthStatus == .restricted {
+            call.reject("Microphone permission denied. Please enable microphone access in Settings.")
+            return
+        }
+        if audioAuthStatus == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        self.startVideoRecordingInternal(call)
+                    } else {
+                        call.reject("Microphone permission denied.")
+                    }
+                }
+            }
+            return
+        }
+
+        startVideoRecordingInternal(call)
+    }
+
+    private func startVideoRecordingInternal(_ call: CAPPluginCall) {
+        guard let movieOutput = movieOutput else {
+            call.reject("Video output not initialized")
+            return
+        }
+        guard !movieOutput.isRecording else {
+            call.reject("Video recording is already in progress")
+            return
+        }
+
+        currentOrientation = detectCurrentOrientation()
+        if let videoConnection = movieOutput.connection(with: .video) {
+            videoConnection.videoOrientation = currentOrientation
+            if cameraPosition == .front {
+                videoConnection.isVideoMirrored = false
+            }
+        }
+
+        if maxRecordingDurationSeconds > 0 {
+            movieOutput.maxRecordedDuration = CMTime(
+                seconds: maxRecordingDurationSeconds,
+                preferredTimescale: 600
+            )
+        } else {
+            movieOutput.maxRecordedDuration = .invalid
+        }
+
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileName = UUID().uuidString + ".mp4"
+        let fileURL = tempDir.appendingPathComponent(fileName)
+
+        let delegate = VideoCaptureDelegate { [weak self] outputURL, error in
+            self?.handleVideoRecordingFinished(outputURL: outputURL, error: error)
+        }
+        self.videoCaptureDelegate = delegate
+        movieOutput.startRecording(to: fileURL, recordingDelegate: delegate)
+        call.resolve()
+    }
+
+    @objc func stopVideoRecording(_ call: CAPPluginCall) {
+        guard let movieOutput = movieOutput else {
+            call.reject("Video output not initialized")
+            return
+        }
+        guard movieOutput.isRecording else {
+            call.reject("No active video recording to stop")
+            return
+        }
+
+        pendingVideoStopCall = call
+        movieOutput.stopRecording()
+    }
+
+    private func handleVideoRecordingFinished(outputURL: URL, error: Error?) {
+        guard let call = pendingVideoStopCall else {
+            return
+        }
+        pendingVideoStopCall = nil
+        defer { videoCaptureDelegate = nil }
+
+        if let error = error {
+            call.reject("Video recording failed: \(error.localizedDescription)")
+            return
+        }
+
+        let thumbnail = generateVideoThumbnail(from: outputURL, size: 200) ?? ""
+        let duration = getVideoDuration(from: outputURL)
+
+        call.resolve([
+            "value": [
+                "uri": outputURL.absoluteString,
+                "thumbnail": thumbnail,
+                "duration": duration
+            ]
+        ])
     }
 
     @objc func setZoom(_ call: CAPPluginCall) {
@@ -482,6 +595,12 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             photoOut.isHighResolutionCaptureEnabled = true
             self.photoOutput = photoOut
         }
+
+        let movieOut = AVCaptureMovieFileOutput()
+        if session.canAddOutput(movieOut) {
+            session.addOutput(movieOut)
+            self.movieOutput = movieOut
+        }
         session.commitConfiguration()
         self.captureSession = session
 
@@ -547,6 +666,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc public override func checkPermissions(_ call: CAPPluginCall) {
         let cameraAuthStatus = AVCaptureDevice.authorizationStatus(for: .video)
         let photosAuthStatus = PHPhotoLibrary.authorizationStatus()
+        let audioAuthStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         
         let cameraPermission: String
         switch cameraAuthStatus {
@@ -571,10 +691,23 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         @unknown default:
             photosPermission = "prompt"
         }
+
+        let audioPermission: String
+        switch audioAuthStatus {
+        case .authorized:
+            audioPermission = "granted"
+        case .denied, .restricted:
+            audioPermission = "denied"
+        case .notDetermined:
+            audioPermission = "prompt"
+        @unknown default:
+            audioPermission = "prompt"
+        }
         
         call.resolve([
             "camera": cameraPermission,
-            "photos": photosPermission
+            "photos": photosPermission,
+            "audio": audioPermission
         ])
     }
     
@@ -582,6 +715,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let group = DispatchGroup()
         var cameraResult = "prompt"
         var photosResult = "prompt"
+        var audioResult = "prompt"
         
         // Request camera permission
         group.enter()
@@ -605,12 +739,20 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             }
             group.leave()
         }
+
+        // Request microphone permission
+        group.enter()
+        AVCaptureDevice.requestAccess(for: .audio) { granted in
+            audioResult = granted ? "granted" : "denied"
+            group.leave()
+        }
         
         // Wait for both permissions and return result
         group.notify(queue: .main) {
             call.resolve([
                 "camera": cameraResult,
-                "photos": photosResult
+                "photos": photosResult,
+                "audio": audioResult
             ])
         }
     }
@@ -940,6 +1082,39 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let base64String = thumbnailData.base64EncodedString()
         return "data:image/jpeg;base64,\(base64String)"
     }
+
+    /**
+     * Generate thumbnail image from a video file.
+     */
+    func generateVideoThumbnail(from videoURL: URL, size: CGFloat) -> String? {
+        let asset = AVAsset(url: videoURL)
+        let imageGenerator = AVAssetImageGenerator(asset: asset)
+        imageGenerator.appliesPreferredTrackTransform = true
+        imageGenerator.maximumSize = CGSize(width: size, height: size)
+
+        do {
+            let cgImage = try imageGenerator.copyCGImage(at: .zero, actualTime: nil)
+            let image = UIImage(cgImage: cgImage)
+            guard let jpegData = image.jpegData(compressionQuality: 0.85) else {
+                return nil
+            }
+            return "data:image/jpeg;base64,\(jpegData.base64EncodedString())"
+        } catch {
+            return nil
+        }
+    }
+
+    /**
+     * Get video duration in seconds.
+     */
+    func getVideoDuration(from videoURL: URL) -> Double {
+        let asset = AVAsset(url: videoURL)
+        let duration = asset.duration
+        if duration.isValid && duration.seconds.isFinite {
+            return duration.seconds
+        }
+        return 0
+    }
     
     // MARK: - Motion Manager for Orientation Detection
     
@@ -992,6 +1167,23 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         default:
             return .portrait
         }
+    }
+}
+
+class VideoCaptureDelegate: NSObject, AVCaptureFileOutputRecordingDelegate {
+    private let completion: (URL, Error?) -> Void
+
+    init(completion: @escaping (URL, Error?) -> Void) {
+        self.completion = completion
+    }
+
+    func fileOutput(
+        _ output: AVCaptureFileOutput,
+        didFinishRecordingTo outputFileURL: URL,
+        from connections: [AVCaptureConnection],
+        error: Error?
+    ) {
+        completion(outputFileURL, error)
     }
 }
 
