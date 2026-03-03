@@ -2,7 +2,7 @@
  * Controller for camera operations
  */
 import { Capacitor } from '@capacitor/core';
-import type { CameraImageData, CameraMultiCapturePlugin } from '../definitions';
+import type { CameraImageData, CameraMultiCapturePlugin, CameraVideoData } from '../definitions';
 import type { CameraOverlayUIOptions } from '../types/ui-types';
 
 /**
@@ -24,6 +24,7 @@ export class CameraController {
   private flashMode: 'on' | 'off' | 'auto' = 'off';
   private flashAutoModeEnabled: boolean = true;
   private torchEnabled = false;
+  private isRecording = false;
   private currentZoom = 1;
   private availableCameras: {
     hasUltrawide: boolean;
@@ -56,6 +57,7 @@ export class CameraController {
           y: rect.y
         },
         containerId: containerElement.id || 'camera-container',
+        maxRecordingDuration: this.options.maxRecordingDuration,
       };
 
       await this.plugin.start(startOptions);
@@ -83,6 +85,47 @@ export class CameraController {
       console.error('Failed to capture photo', error);
       throw error;
     }
+  }
+
+  /**
+   * Starts video recording.
+   */
+  async startVideoRecording(): Promise<void> {
+    try {
+      await this.plugin.startVideoRecording();
+      this.isRecording = true;
+    } catch (error) {
+      console.error('Failed to start video recording', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stops video recording and returns captured video metadata.
+   */
+  async stopVideoRecording(): Promise<CameraVideoData | undefined> {
+    try {
+      const result = await this.plugin.stopVideoRecording();
+      this.isRecording = false;
+
+      if (!result?.value?.uri) {
+        throw new Error('No URI returned from native video recording');
+      }
+
+      result.value.webPath = Capacitor.convertFileSrc(result.value.uri);
+      return result.value;
+    } catch (error) {
+      this.isRecording = false;
+      console.error('Failed to stop video recording', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Returns whether video recording is currently active.
+   */
+  getRecordingState(): boolean {
+    return this.isRecording;
   }
   
   /**
