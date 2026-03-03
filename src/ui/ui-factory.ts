@@ -115,7 +115,8 @@ export function applyButtonStyle(element: HTMLButtonElement, style: ButtonStyle)
 export function createThumbnailContainer(
   thumbnailData: string, 
   thumbnailStyle: { width?: string; height?: string },
-  onRemove: () => void
+  onRemove: () => void,
+  options?: { isVideo?: boolean; duration?: number; onTap?: () => void }
 ): HTMLElement {
   const thumbnailContainer = document.createElement('div');
   const width = thumbnailStyle?.width || '80px';
@@ -147,12 +148,70 @@ export function createThumbnailContainer(
     cursor: 'pointer'
   });
   
+  if (options?.onTap) {
+    const tapHandler = options.onTap;
+    thumbnail.addEventListener('click', (e) => {
+      e.stopPropagation();
+      tapHandler();
+    });
+  }
+
   const removeBtn = createRemoveButton(onRemove);
-  
+
   thumbnailContainer.appendChild(thumbnail);
+
+  if (options?.isVideo) {
+    const playBadge = document.createElement('div');
+    playBadge.innerHTML = '▶';
+    Object.assign(playBadge.style, {
+      position: 'absolute',
+      left: '50%',
+      top: '50%',
+      transform: 'translate(-50%, -50%)',
+      width: '28px',
+      height: '28px',
+      borderRadius: '50%',
+      background: 'rgba(0, 0, 0, 0.55)',
+      color: '#ffffff',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: '14px',
+      zIndex: '2',
+      pointerEvents: 'none'
+    });
+    thumbnailContainer.appendChild(playBadge);
+
+    if (typeof options.duration === 'number') {
+      const durationBadge = document.createElement('div');
+      durationBadge.textContent = formatDuration(options.duration);
+      Object.assign(durationBadge.style, {
+        position: 'absolute',
+        left: '4px',
+        bottom: '4px',
+        background: 'rgba(0, 0, 0, 0.7)',
+        color: '#ffffff',
+        fontSize: '10px',
+        lineHeight: '14px',
+        borderRadius: '8px',
+        padding: '1px 6px',
+        zIndex: '2',
+        pointerEvents: 'none'
+      });
+      thumbnailContainer.appendChild(durationBadge);
+    }
+  }
+
   thumbnailContainer.appendChild(removeBtn);
   
   return thumbnailContainer;
+}
+
+function formatDuration(seconds: number): string {
+  const safe = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 /**
