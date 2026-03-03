@@ -106,6 +106,11 @@ export interface CameraOverlayOptions {
   autoFocus?: boolean;
   flash?: 'on' | 'off' | 'auto';
   maxCaptures?: number;
+  /**
+   * Maximum video recording duration in seconds.
+   * If omitted, recording duration is unlimited until user releases.
+   */
+  maxRecordingDuration?: number;
   flashAutoModeEnabled?: boolean;
   showShotCounter?: boolean;
   /**
@@ -133,6 +138,24 @@ export interface CameraImageData {
 }
 
 /**
+ * Structure for video data returned by the camera
+ */
+export interface CameraVideoData {
+  uri: string;
+  thumbnail: string; // Optimized thumbnail as Base64 data URI
+  webPath?: string;
+  duration: number; // Duration in seconds
+}
+
+/**
+ * Interface for captured videos
+ */
+export interface CapturedVideo {
+  id: string;
+  data: CameraVideoData;
+}
+
+/**
  * Event data for photo added event
  */
 export interface PhotoAddedEvent {
@@ -148,8 +171,24 @@ export interface PhotoRemovedEvent {
   totalCount: number;
 }
 
+/**
+ * Event data for video recording started event
+ */
+export interface VideoRecordingStartedEvent {
+  timestamp: number;
+}
+
+/**
+ * Event data for video recording stopped event
+ */
+export interface VideoRecordingStoppedEvent {
+  video: CameraVideoData;
+  totalCount: number;
+}
+
 export interface CameraOverlayResult {
   images: CameraImageData[];
+  videos: CameraVideoData[];
   cancelled: boolean;
 }
 
@@ -159,6 +198,7 @@ export interface CameraOverlayResult {
 export interface PermissionStatus {
   camera: PermissionState;
   photos: PermissionState;
+  audio: PermissionState;
 }
 
 export interface CameraMultiCapturePlugin {
@@ -171,6 +211,16 @@ export interface CameraMultiCapturePlugin {
    * Captures a single frame.
    */
   capture(): Promise<{ value: CameraImageData }>;
+
+  /**
+   * Starts recording video.
+   */
+  startVideoRecording(): Promise<void>;
+
+  /**
+   * Stops recording video and returns video metadata.
+   */
+  stopVideoRecording(): Promise<{ value: CameraVideoData }>;
 
   /**
    * Stops and tears down the camera session.
