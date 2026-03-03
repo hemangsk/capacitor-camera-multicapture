@@ -4,6 +4,8 @@
 import type { CameraImageData, CameraVideoData, CapturedImage, CapturedVideo, PhotoAddedEvent, PhotoRemovedEvent } from '../definitions';
 import { createThumbnailContainer } from '../ui/ui-factory';
 import { openImagePreview, openVideoPreview } from '../ui/media-viewer';
+import { openImageEditor, isEditorActive } from '../ui/image-editor';
+import type { MarkerAreaState } from 'markerjs2';
 
 type CaptureEntry =
   | { type: 'image'; item: CapturedImage }
@@ -21,6 +23,7 @@ export class GalleryController {
   private onImageRemoved: (images: CapturedImage[]) => void;
   private onPhotoAdded?: (event: PhotoAddedEvent) => void;
   private onPhotoRemoved?: (event: PhotoRemovedEvent) => void;
+  private editorStates: Map<string, MarkerAreaState> = new Map();
 
   constructor(
     galleryElement: HTMLElement,
@@ -190,6 +193,50 @@ export class GalleryController {
   }
 
   /**
+   * Replaces an existing image's data (e.g. after annotation) and re-renders.
+   */
+  updateImage(imageId: string, newData: CameraImageData): void {
+    const target = this.images.find(img => img.id === imageId);
+    if (!target) return;
+    target.data = newData;
+
+    const entry = this.captureOrder.find(
+      e => e.type === 'image' && e.item.id === imageId
+    );
+    if (entry && entry.type === 'image') {
+      entry.item.data = newData;
+    }
+
+    this.renderGallery();
+  }
+
+  /**
+   * Opens marker.js editor on the given image and replaces it on save.
+   */
+  private handleEditImage(image: CapturedImage): void {
+    if (isEditorActive()) return;
+
+    const src = image.data.webPath || image.data.uri;
+    const previousState = this.editorStates.get(image.id);
+
+    openImageEditor(src, previousState).then((result) => {
+      if (!result) return;
+
+      this.editorStates.set(image.id, result.state);
+
+      const updatedData: CameraImageData = {
+        ...image.data,
+        uri: result.dataUrl,
+        webPath: result.dataUrl,
+        thumbnail: result.dataUrl,
+      };
+      this.updateImage(image.id, updatedData);
+    }).catch((err) => {
+      console.error('[CameraMultiCapture] Image editor error:', err);
+    });
+  }
+
+  /**
    * Renders the gallery in chronological capture order
    */
   private renderGallery(): void {
@@ -203,7 +250,13 @@ export class GalleryController {
           image.data.thumbnail,
           this.thumbnailStyle,
           () => this.removeImage(image.id),
-          { onTap: () => openImagePreview(src, image.data.thumbnail) }
+          {
+            onTap: () => openImagePreview(
+              src,
+              image.data.thumbnail,
+              () => this.handleEditImage(image),
+            ),
+          }
         );
         this.galleryElement.appendChild(thumbnailContainer);
       } else {

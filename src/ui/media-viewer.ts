@@ -59,6 +59,26 @@ function ensureStyles(): void {
       margin-top: calc(env(safe-area-inset-top) + var(--cmmc-safe-top-extra)) !important;
       margin-bottom: calc(env(safe-area-inset-bottom) + var(--cmmc-safe-bottom-extra)) !important;
     }
+    .cmmc-bp-edit {
+      position: absolute;
+      top: env(safe-area-inset-top);
+      left: 0;
+      z-index: 10;
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #fff;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .cmmc-bp-edit svg {
+      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6));
+    }
   `;
   document.head.appendChild(styleEl);
 }
@@ -168,7 +188,23 @@ function getVideoDimensions(src: string): Promise<{ width: number; height: numbe
   });
 }
 
-export function openImagePreview(src: string, thumb?: string): void {
+function injectEditButton(container: HTMLElement, onEdit: () => void): void {
+  if (container.querySelector('.cmmc-bp-edit')) return;
+
+  const btn = document.createElement('button');
+  btn.className = 'cmmc-bp-edit';
+  btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    getInstance().close();
+    onEdit();
+  };
+
+  container.appendChild(btn);
+}
+
+export function openImagePreview(src: string, thumb?: string, onEdit?: () => void): void {
   void (async () => {
     ensureStyles();
     const dimensions = await getImageDimensions(src);
@@ -189,6 +225,13 @@ export function openImagePreview(src: string, thumb?: string): void {
       intro: 'fadeup',
       onOpen: (container) => {
         applyDynamicSafeArea(container);
+        if (onEdit) {
+          injectEditButton(container, onEdit);
+        }
+      },
+      onClose: (container) => {
+        if (!container) return;
+        container.style.display = 'none';
       },
       onResize: (container) => {
         if (!container) return;

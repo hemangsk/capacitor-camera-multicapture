@@ -46,6 +46,7 @@ export class OverlayManager {
   private torchConfig: any | null = null;
   private pinchHandler: PinchZoomHandler | null = null;
   private isRecordingVideo = false;
+  private captureButton: HTMLButtonElement | null = null;
   private captureGestureBinding: CaptureGestureBinding | null = null;
   private recordingIndicator: HTMLElement | null = null;
   private recordingTimerText: HTMLElement | null = null;
@@ -208,6 +209,7 @@ export class OverlayManager {
 
     // Create buttons
     const captureBtn = createButton(buttons.capture);
+    this.captureButton = captureBtn;
 
     // Create shot counter only if enabled
     if (this.options.showShotCounter) {
@@ -216,6 +218,8 @@ export class OverlayManager {
 
     // Place capture button back in center (no container needed)
     bottomCells.middle.appendChild(captureBtn);
+
+    this.ensureRecordingGlowStyles();
 
     this.recordingIndicator = this.createRecordingIndicator();
     Object.assign(this.recordingIndicator.style, {
@@ -565,6 +569,7 @@ export class OverlayManager {
       this.recordingStartedAt = Date.now();
       this.startRecordingTimer();
       this.showRecordingIndicator(true);
+      this.setCaptureGlow(true);
       this.emitVideoRecordingStartedEvent({ timestamp: this.recordingStartedAt });
     } catch (error) {
       this.isRecordingVideo = false;
@@ -585,6 +590,7 @@ export class OverlayManager {
       this.isRecordingVideo = false;
       this.stopRecordingTimer();
       this.showRecordingIndicator(false);
+      this.setCaptureGlow(false);
 
       if (videoData && this.galleryController) {
         this.galleryController.addVideo(videoData);
@@ -597,7 +603,37 @@ export class OverlayManager {
       this.isRecordingVideo = false;
       this.stopRecordingTimer();
       this.showRecordingIndicator(false);
+      this.setCaptureGlow(false);
       console.error('Failed to stop video recording', error);
+    }
+  }
+
+  private ensureRecordingGlowStyles(): void {
+    const id = 'cmmc-recording-glow-styles';
+    if (document.getElementById(id)) return;
+
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
+      @keyframes cmmcCaptureGlow {
+        0%   { filter: drop-shadow(0 0 6px rgba(255, 59, 48, 0.7)); }
+        50%  { filter: drop-shadow(0 0 18px rgba(255, 59, 48, 1)) drop-shadow(0 0 40px rgba(255, 59, 48, 0.5)); }
+        100% { filter: drop-shadow(0 0 6px rgba(255, 59, 48, 0.7)); }
+      }
+      .cmmc-capture-recording {
+        animation: cmmcCaptureGlow 1.2s ease-in-out infinite !important;
+        filter: drop-shadow(0 0 6px rgba(255, 59, 48, 0.7)) !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  private setCaptureGlow(active: boolean): void {
+    if (!this.captureButton) return;
+    if (active) {
+      this.captureButton.classList.add('cmmc-capture-recording');
+    } else {
+      this.captureButton.classList.remove('cmmc-capture-recording');
     }
   }
 
@@ -713,8 +749,10 @@ export class OverlayManager {
     }
     this.stopRecordingTimer();
     this.showRecordingIndicator(false);
+    this.setCaptureGlow(false);
     this.recordingIndicator = null;
     this.recordingTimerText = null;
+    this.captureButton = null;
     this.torchButton = null;
     this.torchConfig = null;
     if (this.pinchHandler) {
