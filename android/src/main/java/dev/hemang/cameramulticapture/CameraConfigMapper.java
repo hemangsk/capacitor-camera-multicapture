@@ -89,6 +89,8 @@ public class CameraConfigMapper {
             }
         }
 
+        config.maxRecordingDurationSeconds = data.getInteger("maxRecordingDuration", 0);
+
         return config;
     }
 }
