@@ -89,6 +89,8 @@ public class CameraConfigMapper {
             }
         }
 
+        config.saveToGallery = data.getBoolean("saveToGallery", true);
+        config.galleryAlbumName = data.getString("galleryAlbumName", "Camera");
         return config;
     }
 }
