@@ -1,7 +1,14 @@
 /**
  * Overlay Manager - Main controller for camera overlay UI
  */
-import type { CameraMultiCapturePlugin, CameraOverlayResult, PhotoAddedEvent, PhotoRemovedEvent } from './definitions';
+import type {
+  CameraMultiCapturePlugin,
+  CameraOverlayResult,
+  PhotoAddedEvent,
+  PhotoRemovedEvent,
+  VideoRecordingStartedEvent,
+  VideoRecordingStoppedEvent,
+} from './definitions';
 import { CameraController } from './controllers/camera-controller';
 import { GalleryController } from './controllers/gallery-controller';
 import { merge } from 'lodash';
@@ -15,6 +22,8 @@ import {
 } from './ui/layout-manager';
 import type { ButtonsConfig, CameraOverlayUIOptions } from './types/ui-types';
 import { PinchZoomHandler } from './ui/pinch-zoom-handler';
+import { bindCaptureGestures } from './ui/capture-gesture-handler';
+import type { CaptureGestureBinding } from './ui/capture-gesture-handler';
 
 /**
  * Main class to manage camera overlay UI
@@ -36,6 +45,12 @@ export class OverlayManager {
   private torchButton: HTMLButtonElement | null = null;
   private torchConfig: any | null = null;
   private pinchHandler: PinchZoomHandler | null = null;
+  private isRecordingVideo = false;
+  private captureGestureBinding: CaptureGestureBinding | null = null;
+  private recordingIndicator: HTMLElement | null = null;
+  private recordingTimerText: HTMLElement | null = null;
+  private recordingStartedAt = 0;
+  private recordingIntervalId: number | null = null;
 
   constructor(plugin: CameraMultiCapturePlugin, options: CameraOverlayUIOptions) {
     this.options = options;
@@ -63,6 +78,30 @@ export class OverlayManager {
       window.dispatchEvent(event);
     } catch (error) {
       console.error('[CameraMultiCapture] Failed to emit photoRemoved event:', error);
+    }
+  }
+
+  /**
+   * Emits videoRecordingStarted event using pure JavaScript events.
+   */
+  private emitVideoRecordingStartedEvent(eventData: VideoRecordingStartedEvent): void {
+    try {
+      const event = new CustomEvent('videoRecordingStarted', { detail: eventData });
+      window.dispatchEvent(event);
+    } catch (error) {
+      console.error('[CameraMultiCapture] Failed to emit videoRecordingStarted event:', error);
+    }
+  }
+
+  /**
+   * Emits videoRecordingStopped event using pure JavaScript events.
+   */
+  private emitVideoRecordingStoppedEvent(eventData: VideoRecordingStoppedEvent): void {
+    try {
+      const event = new CustomEvent('videoRecordingStopped', { detail: eventData });
+      window.dispatchEvent(event);
+    } catch (error) {
+      console.error('[CameraMultiCapture] Failed to emit videoRecordingStopped event:', error);
     }
   }
 
@@ -109,7 +148,7 @@ export class OverlayManager {
         }
       } catch (error) {
         console.error('Failed to initialize camera overlay', error);
-        resolve({ images: [], cancelled: true });
+        resolve({ images: [], videos: [], cancelled: true });
         this.cleanup();
       }
     });
@@ -178,32 +217,20 @@ export class OverlayManager {
     // Place capture button back in center (no container needed)
     bottomCells.middle.appendChild(captureBtn);
 
-    captureBtn.onclick = async () => {
-      try {
-        const imageData = await this.cameraController.captureImage();
-        if (imageData && this.galleryController) {
-          this.galleryController.addImage(imageData);
+    this.recordingIndicator = this.createRecordingIndicator();
+    Object.assign(this.recordingIndicator.style, {
+      position: 'absolute',
+      top: '12px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+    });
+    this.overlayElement.appendChild(this.recordingIndicator);
 
-          // Increment shot counter and update UI (only if counter is enabled)
-          if (this.options.showShotCounter) {
-            this.shotCount++;
-            if (this.shotCounter) {
-              updateShotCounter(this.shotCounter, this.shotCount);
-            }
-          }
-
-          // Check if we've reached maxCaptures limit
-          if (this.options.maxCaptures && this.galleryController.getImages().length >= this.options.maxCaptures) {
-            // Auto-complete capture when limit is reached
-            setTimeout(() => {
-              this.completeCapture(false);
-            }, 100); // Small delay to ensure image is properly added
-          }
-        }
-      } catch (error) {
-        console.error('Failed to capture image', error);
-      }
-    };
+    this.captureGestureBinding = bindCaptureGestures(captureBtn, {
+      onTap: () => this.handleCaptureTap(),
+      onHoldStart: () => this.handleCaptureHoldStart(),
+      onHoldEnd: () => this.handleCaptureRelease(),
+    });
 
     // Only show Done button if not in single capture mode
     if (this.options.maxCaptures !== 1) {
@@ -501,16 +528,169 @@ export class OverlayManager {
   }
 
   /**
+   * Handles quick tap capture for still images.
+   */
+  private async handleCaptureTap(): Promise<void> {
+    try {
+      const imageData = await this.cameraController.captureImage();
+      if (!imageData || !this.galleryController) return;
+
+      this.galleryController.addImage(imageData);
+
+      if (this.options.showShotCounter) {
+        this.shotCount++;
+        if (this.shotCounter) {
+          updateShotCounter(this.shotCounter, this.shotCount);
+        }
+      }
+
+      if (this.options.maxCaptures && this.galleryController.getImages().length >= this.options.maxCaptures) {
+        setTimeout(() => this.completeCapture(false), 100);
+      }
+    } catch (error) {
+      console.error('Failed to capture image', error);
+    }
+  }
+
+  /**
+   * Handles long press start to begin video recording.
+   */
+  private async handleCaptureHoldStart(): Promise<void> {
+    if (this.isRecordingVideo || this.cameraController.getRecordingState()) {
+      return;
+    }
+    try {
+      await this.cameraController.startVideoRecording();
+      this.isRecordingVideo = true;
+      this.recordingStartedAt = Date.now();
+      this.startRecordingTimer();
+      this.showRecordingIndicator(true);
+      this.emitVideoRecordingStartedEvent({ timestamp: this.recordingStartedAt });
+    } catch (error) {
+      this.isRecordingVideo = false;
+      console.error('Failed to start video recording', error);
+    }
+  }
+
+  /**
+   * Handles pointer release for either tap photo or stop video recording.
+   */
+  private async handleCaptureRelease(): Promise<void> {
+    if (!this.isRecordingVideo) {
+      return;
+    }
+
+    try {
+      const videoData = await this.cameraController.stopVideoRecording();
+      this.isRecordingVideo = false;
+      this.stopRecordingTimer();
+      this.showRecordingIndicator(false);
+
+      if (videoData && this.galleryController) {
+        this.galleryController.addVideo(videoData);
+        this.emitVideoRecordingStoppedEvent({
+          video: videoData,
+          totalCount: this.galleryController.getVideos().length,
+        });
+      }
+    } catch (error) {
+      this.isRecordingVideo = false;
+      this.stopRecordingTimer();
+      this.showRecordingIndicator(false);
+      console.error('Failed to stop video recording', error);
+    }
+  }
+
+  private createRecordingIndicator(): HTMLElement {
+    const indicator = document.createElement('div');
+    const dot = document.createElement('span');
+    const timer = document.createElement('span');
+    timer.textContent = '00:00';
+
+    Object.assign(indicator.style, {
+      display: 'none',
+      alignItems: 'center',
+      gap: '6px',
+      padding: '6px 10px',
+      borderRadius: '14px',
+      background: 'rgba(0, 0, 0, 0.55)',
+      color: '#ffffff',
+      fontSize: '12px',
+      fontWeight: '600',
+      pointerEvents: 'none',
+      zIndex: '4',
+    });
+
+    Object.assign(dot.style, {
+      width: '8px',
+      height: '8px',
+      borderRadius: '50%',
+      background: '#ff3b30',
+      boxShadow: '0 0 10px rgba(255, 59, 48, 0.9)',
+      animation: 'cmmcRecordPulse 1s infinite',
+    });
+
+    const styleTag = document.createElement('style');
+    styleTag.textContent = `
+      @keyframes cmmcRecordPulse {
+        0% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.35; transform: scale(0.9); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+    `;
+    indicator.appendChild(styleTag);
+    indicator.appendChild(dot);
+    indicator.appendChild(timer);
+    this.recordingTimerText = timer;
+
+    return indicator;
+  }
+
+  private showRecordingIndicator(visible: boolean): void {
+    if (!this.recordingIndicator) return;
+    this.recordingIndicator.style.display = visible ? 'flex' : 'none';
+    if (!visible && this.recordingTimerText) {
+      this.recordingTimerText.textContent = '00:00';
+    }
+  }
+
+  private startRecordingTimer(): void {
+    this.stopRecordingTimer();
+    this.recordingIntervalId = window.setInterval(() => {
+      if (!this.recordingTimerText) return;
+      const elapsedSeconds = Math.floor((Date.now() - this.recordingStartedAt) / 1000);
+      if (this.options.maxRecordingDuration && elapsedSeconds >= this.options.maxRecordingDuration) {
+        // Prevent duplicate stop calls while awaiting native stop completion.
+        this.stopRecordingTimer();
+        void this.handleCaptureRelease();
+        return;
+      }
+      const minutes = Math.floor(elapsedSeconds / 60);
+      const seconds = elapsedSeconds % 60;
+      this.recordingTimerText.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }, 200);
+  }
+
+  private stopRecordingTimer(): void {
+    if (this.recordingIntervalId !== null) {
+      clearInterval(this.recordingIntervalId);
+      this.recordingIntervalId = null;
+    }
+  }
+
+  /**
    * Completes the capture process
    */
   private completeCapture(cancelled: boolean): void {
     const images = this.galleryController?.getImages() || [];
+    const videos = this.galleryController?.getVideos() || [];
 
     this.cleanup();
 
     if (this.resolvePromise) {
       this.resolvePromise({
         images: !cancelled ? images.map(img => img.data) : [],
+        videos: !cancelled ? videos.map(vid => vid.data) : [],
         cancelled
       });
       this.resolvePromise = null;
@@ -521,6 +701,20 @@ export class OverlayManager {
    * Cleans up resources
    */
   private cleanup(): void {
+    if (this.captureGestureBinding) {
+      this.captureGestureBinding.detach();
+      this.captureGestureBinding = null;
+    }
+    if (this.isRecordingVideo) {
+      this.cameraController.stopVideoRecording().catch(() => {
+        // best effort stop during cleanup
+      });
+      this.isRecordingVideo = false;
+    }
+    this.stopRecordingTimer();
+    this.showRecordingIndicator(false);
+    this.recordingIndicator = null;
+    this.recordingTimerText = null;
     this.torchButton = null;
     this.torchConfig = null;
     if (this.pinchHandler) {
