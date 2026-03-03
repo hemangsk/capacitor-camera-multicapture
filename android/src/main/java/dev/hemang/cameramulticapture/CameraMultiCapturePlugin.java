@@ -237,6 +237,86 @@ public class CameraMultiCapturePlugin extends Plugin {
         });
     }
 
+    /**
+     * Saves an image file to the device's gallery using MediaStore API.
+     * Works on Android 10+ (API 29+) with scoped storage.
+     *
+     * @param imageFile The image file to save
+     * @param albumName The album/folder name in Pictures directory
+     * @return The content URI of the saved image, or null if failed
+     */
+    private Uri saveImageToGallery(File imageFile, String albumName) {
+        ContentResolver resolver = getContext().getContentResolver();
+        ContentValues contentValues = new ContentValues();
+
+        String fileName = "IMG_" + System.currentTimeMillis() + ".jpg";
+        contentValues.put(MediaStore.Images.Media.DISPLAY_NAME, fileName);
+        contentValues.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+        contentValues.put(MediaStore.Images.Media.DATE_ADDED, System.currentTimeMillis() / 1000);
+        contentValues.put(MediaStore.Images.Media.DATE_TAKEN, System.currentTimeMillis());
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            contentValues.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/" + albumName);
+            contentValues.put(MediaStore.Images.Media.IS_PENDING, 1);
+        }
+
+        Uri imageUri = null;
+        OutputStream outputStream = null;
+        InputStream inputStream = null;
+
+        try {
+            imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues);
+
+            if (imageUri == null) {
+                Log.e("CameraMultiCapture", "Failed to create MediaStore entry");
+                return null;
+            }
+
+            outputStream = resolver.openOutputStream(imageUri);
+            if (outputStream == null) {
+                Log.e("CameraMultiCapture", "Failed to open output stream");
+                resolver.delete(imageUri, null, null);
+                return null;
+            }
+
+            inputStream = new FileInputStream(imageFile);
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, bytesRead);
+            }
+
+            outputStream.flush();
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                contentValues.clear();
+                contentValues.put(MediaStore.Images.Media.IS_PENDING, 0);
+                resolver.update(imageUri, contentValues, null, null);
+            }
+
+            Log.d("CameraMultiCapture", "Image saved to gallery: " + imageUri.toString());
+            return imageUri;
+
+        } catch (Exception e) {
+            Log.e("CameraMultiCapture", "Failed to save image to gallery: " + e.getMessage(), e);
+            if (imageUri != null) {
+                try {
+                    resolver.delete(imageUri, null, null);
+                } catch (Exception deleteEx) {
+                    Log.e("CameraMultiCapture", "Failed to clean up failed gallery entry", deleteEx);
+                }
+            }
+            return null;
+        } finally {
+            try {
+                if (outputStream != null) outputStream.close();
+                if (inputStream != null) inputStream.close();
+            } catch (IOException e) {
+                Log.e("CameraMultiCapture", "Error closing streams", e);
+            }
+        }
+    }
+
     @PluginMethod
     public void capture(PluginCall call) {
         if (imageCapture == null) {
