@@ -349,10 +349,21 @@ public class CameraMultiCapturePlugin extends Plugin {
                             if (!orientationCorrected) {
                                 Log.w("CameraMultiCapture", "Failed to correct image orientation");
                             }
-                            
+
                             Uri uri = Uri.fromFile(photoFile);
                             imageData.put("uri", uri.toString());
-                            
+
+                            // Save to gallery if enabled (default: true)
+                            if (currentConfig.saveToGallery) {
+                                Uri galleryUri = saveImageToGallery(photoFile, currentConfig.galleryAlbumName);
+                                if (galleryUri != null) {
+                                    imageData.put("galleryUri", galleryUri.toString());
+                                    Log.d("CameraMultiCapture", "Image saved to gallery: " + galleryUri.toString());
+                                } else {
+                                    Log.w("CameraMultiCapture", "Failed to save image to gallery, but capture succeeded");
+                                }
+                            }
+
                             String thumbnailBase64 = ThumbnailGenerator.generateThumbnail(photoFile);
                             if (thumbnailBase64 != null) {
                                 imageData.put("thumbnail", thumbnailBase64);
@@ -360,7 +371,7 @@ public class CameraMultiCapturePlugin extends Plugin {
                                 Log.w("CameraMultiCapture", "Thumbnail generation failed");
                                 imageData.put("thumbnail", "");
                             }
-                            
+
                             result.put("value", imageData);
                         } catch (Exception e) {
                             call.reject("Failed to process photo file", e);
