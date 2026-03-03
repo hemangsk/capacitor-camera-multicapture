@@ -1,8 +1,9 @@
 /**
  * Controller for gallery operations and captured images
  */
-import type { CameraImageData, CapturedImage, PhotoAddedEvent, PhotoRemovedEvent } from '../definitions';
+import type { CameraImageData, CameraVideoData, CapturedImage, CapturedVideo, PhotoAddedEvent, PhotoRemovedEvent } from '../definitions';
 import { createThumbnailContainer } from '../ui/ui-factory';
+import { openImagePreview, openVideoPreview } from '../ui/media-viewer';
 
 /**
  * Manages gallery operations and captured images
@@ -10,6 +11,7 @@ import { createThumbnailContainer } from '../ui/ui-factory';
 export class GalleryController {
   private galleryElement: HTMLElement;
   private images: CapturedImage[] = [];
+  private videos: CapturedVideo[] = [];
   private thumbnailStyle: { width?: string; height?: string };
   private onImageRemoved: (images: CapturedImage[]) => void;
   private onPhotoAdded?: (event: PhotoAddedEvent) => void;
@@ -101,12 +103,33 @@ export class GalleryController {
   }
 
   /**
+   * Adds a new video to the gallery
+   */
+  addVideo(videoData: CameraVideoData): void {
+    const id = `vid_${Date.now()}_${this.videos.length}`;
+    const newVideo: CapturedVideo = { id, data: videoData };
+
+    this.videos.push(newVideo);
+    this.renderGallery();
+    this.scrollToLatestImage();
+  }
+
+  /**
+   * Removes a video from the gallery
+   */
+  removeVideo(videoId: string): void {
+    this.videos = this.videos.filter(vid => vid.id !== videoId);
+    this.renderGallery();
+  }
+
+  /**
    * Clears all images from the gallery
    */
   clearGallery(): void {
     // Store images to remove before clearing
     const imagesToRemove = [...this.images];
     this.images = [];
+    this.videos = [];
     this.renderGallery();
     this.onImageRemoved(this.images);
 
@@ -146,16 +169,41 @@ export class GalleryController {
   }
 
   /**
+   * Gets all captured videos
+   */
+  getVideos(): CapturedVideo[] {
+    return this.videos;
+  }
+
+  /**
    * Renders the gallery with current images
    */
   private renderGallery(): void {
     this.galleryElement.innerHTML = '';
 
     this.images.forEach(image => {
+      const src = image.data.webPath || image.data.uri;
       const thumbnailContainer = createThumbnailContainer(
         image.data.thumbnail,
         this.thumbnailStyle,
-        () => this.removeImage(image.id)
+        () => this.removeImage(image.id),
+        { onTap: () => openImagePreview(src, image.data.thumbnail) }
+      );
+
+      this.galleryElement.appendChild(thumbnailContainer);
+    });
+
+    this.videos.forEach(video => {
+      const src = video.data.webPath || video.data.uri;
+      const thumbnailContainer = createThumbnailContainer(
+        video.data.thumbnail,
+        this.thumbnailStyle,
+        () => this.removeVideo(video.id),
+        {
+          isVideo: true,
+          duration: video.data.duration,
+          onTap: () => openVideoPreview(src, video.data.thumbnail),
+        }
       );
 
       this.galleryElement.appendChild(thumbnailContainer);
