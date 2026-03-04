@@ -2,6 +2,7 @@
  * Controller for camera operations
  */
 import { Capacitor } from '@capacitor/core';
+import { TorchState } from '../definitions';
 import type { CameraImageData, CameraMultiCapturePlugin, CameraVideoData } from '../definitions';
 import type { CameraOverlayUIOptions } from '../types/ui-types';
 
@@ -23,7 +24,7 @@ export class CameraController {
   private options: CameraOverlayUIOptions;
   private flashMode: 'on' | 'off' | 'auto' = 'off';
   private flashAutoModeEnabled: boolean = true;
-  private torchEnabled = false;
+  private torchState: TorchState = TorchState.Off;
   private isRecording = false;
   private currentZoom = 1;
   private availableCameras: {
@@ -286,12 +287,12 @@ export class CameraController {
   }
 
   /**
-   * Sets the torch (flashlight) on or off.
+   * Sets the torch (flashlight) state.
    */
-  async setTorch(enabled: boolean): Promise<void> {
+  async setTorch(state: TorchState): Promise<void> {
     try {
-      await this.plugin.setTorch({ enabled });
-      this.torchEnabled = enabled;
+      await this.plugin.setTorch({ enabled: state === TorchState.On });
+      this.torchState = state;
     } catch (error) {
       console.error('Failed to set torch', error);
       throw error;
@@ -299,25 +300,25 @@ export class CameraController {
   }
 
   /**
-   * Gets whether the torch is currently enabled.
+   * Gets the current torch state.
    */
-  async getTorch(): Promise<boolean> {
+  async getTorch(): Promise<TorchState> {
     try {
       const result = await this.plugin.getTorch();
-      this.torchEnabled = result.enabled;
-      return this.torchEnabled;
+      this.torchState = result.enabled ? TorchState.On : TorchState.Off;
+      return this.torchState;
     } catch (error) {
       console.error('Failed to get torch state', error);
-      return this.torchEnabled;
+      return this.torchState;
     }
   }
 
   /**
    * Toggles the torch state and returns the new value.
    */
-  async toggleTorch(): Promise<boolean> {
-    const currentlyEnabled = await this.getTorch();
-    const next = !currentlyEnabled;
+  async toggleTorch(): Promise<TorchState> {
+    const current = await this.getTorch();
+    const next = current === TorchState.On ? TorchState.Off : TorchState.On;
     await this.setTorch(next);
     return next;
   }

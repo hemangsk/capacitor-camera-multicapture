@@ -1,13 +1,14 @@
 /**
  * Overlay Manager - Main controller for camera overlay UI
  */
-import type {
-  CameraMultiCapturePlugin,
-  CameraOverlayResult,
-  PhotoAddedEvent,
-  PhotoRemovedEvent,
-  VideoRecordingStartedEvent,
-  VideoRecordingStoppedEvent,
+import {
+  TorchState,
+  type CameraMultiCapturePlugin,
+  type CameraOverlayResult,
+  type PhotoAddedEvent,
+  type PhotoRemovedEvent,
+  type VideoRecordingStartedEvent,
+  type VideoRecordingStoppedEvent,
 } from './definitions';
 import { CameraController } from './controllers/camera-controller';
 import { GalleryController } from './controllers/gallery-controller';
@@ -328,8 +329,8 @@ export class OverlayManager {
     this.torchButton = torchBtn;
     this.torchConfig = config;
 
-    const updateTorchIcon = async (enabled: boolean) => {
-      const icon = enabled ? config.onIcon : config.offIcon;
+    const updateTorchIcon = async (state: TorchState) => {
+      const icon = state === TorchState.On ? config.onIcon : config.offIcon;
       if (icon) {
         await setButtonIcon(torchBtn, icon);
       }
@@ -337,8 +338,8 @@ export class OverlayManager {
 
     torchBtn.onclick = async () => {
       try {
-        const enabled = await this.cameraController.toggleTorch();
-        await updateTorchIcon(enabled);
+        const state = await this.cameraController.toggleTorch();
+        await updateTorchIcon(state);
       } catch (error) {
         console.error('Failed to toggle torch', error);
       }
@@ -346,7 +347,7 @@ export class OverlayManager {
 
     // Best-effort initial state sync; defaults to off if call fails.
     this.cameraController.getTorch()
-      .then((enabled) => updateTorchIcon(enabled))
+      .then((state) => updateTorchIcon(state))
       .catch(() => { /* initial sync is optional */ });
 
     container.appendChild(torchBtn);
@@ -358,8 +359,8 @@ export class OverlayManager {
   private async refreshTorchIconFromState(): Promise<void> {
     if (!this.torchButton || !this.torchConfig) return;
     try {
-      const enabled = await this.cameraController.getTorch();
-      const icon = enabled ? this.torchConfig.onIcon : this.torchConfig.offIcon;
+      const state = await this.cameraController.getTorch();
+      const icon = state === TorchState.On ? this.torchConfig.onIcon : this.torchConfig.offIcon;
       if (icon) {
         await setButtonIcon(this.torchButton, icon);
       }
