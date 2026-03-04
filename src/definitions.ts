@@ -5,6 +5,11 @@ export interface ThumbnailStyle {
   height?: string;
 }
 
+export enum TorchState {
+  Off = 0,
+  On = 1,
+}
+
 export type CameraDirection = 'front' | 'back';
 
 export type CaptureMode = 'minimizeLatency' | 'maxQuality';
