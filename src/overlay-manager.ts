@@ -1,14 +1,14 @@
 /**
  * Overlay Manager - Main controller for camera overlay UI
  */
-import {
-  TorchState,
-  type CameraMultiCapturePlugin,
-  type CameraOverlayResult,
-  type PhotoAddedEvent,
-  type PhotoRemovedEvent,
-  type VideoRecordingStartedEvent,
-  type VideoRecordingStoppedEvent,
+import { TorchState } from './definitions';
+import type {
+  CameraMultiCapturePlugin,
+  CameraOverlayResult,
+  PhotoAddedEvent,
+  PhotoRemovedEvent,
+  VideoRecordingStartedEvent,
+  VideoRecordingStoppedEvent,
 } from './definitions';
 import { CameraController } from './controllers/camera-controller';
 import { GalleryController } from './controllers/gallery-controller';
@@ -53,6 +53,7 @@ export class OverlayManager {
   private recordingTimerText: HTMLElement | null = null;
   private recordingStartedAt = 0;
   private recordingIntervalId: number | null = null;
+  private boundOrientationHandler: (() => void) | null = null;
 
   constructor(plugin: CameraMultiCapturePlugin, options: CameraOverlayUIOptions) {
     this.options = options;
@@ -294,9 +295,8 @@ export class OverlayManager {
       this.zoomContainer = positions.zoomRow;
     }
 
-    window.addEventListener('orientationchange', () => {
-      this.handleOrientationChange();
-    });
+    this.boundOrientationHandler = () => this.handleOrientationChange();
+    window.addEventListener('orientationchange', this.boundOrientationHandler);
   }
 
   /**
@@ -776,8 +776,9 @@ export class OverlayManager {
     if (this.bodyBackgroundColor) {
       document.body.style.backgroundColor = this.bodyBackgroundColor;
     }
-    window.removeEventListener('orientationchange', () => {
-      this.handleOrientationChange();
-    });
+    if (this.boundOrientationHandler) {
+      window.removeEventListener('orientationchange', this.boundOrientationHandler);
+      this.boundOrientationHandler = null;
+    }
   }
 }

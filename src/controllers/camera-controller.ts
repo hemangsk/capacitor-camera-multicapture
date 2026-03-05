@@ -184,9 +184,9 @@ export class CameraController {
   async switchToPhysicalCamera(zoomFactor: number): Promise<void> {
     try {
       await this.plugin.switchToPhysicalCamera({ zoomFactor });
+      this.currentZoom = zoomFactor;
     } catch (error) {
       console.error('Failed to switch physical camera', error);
-      // Fallback to regular zoom
       await this.setZoom(zoomFactor);
     }
   }
@@ -204,6 +204,7 @@ export class CameraController {
   async switchCamera(): Promise<void> {
     try {
       await this.plugin.switchCamera();
+      this.availableCameras = null;
     } catch (error) {
       console.error('Failed to switch camera', error);
       throw error;
