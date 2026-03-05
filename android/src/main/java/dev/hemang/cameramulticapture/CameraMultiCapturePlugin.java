@@ -409,6 +409,8 @@ public class CameraMultiCapturePlugin extends Plugin {
             return;
         }
 
+        saveVideoToGallery(outputUri);
+
         String thumbnail = generateVideoThumbnail(outputUri);
         double duration = getVideoDurationSeconds(outputUri);
 
@@ -462,6 +464,48 @@ public class CameraMultiCapturePlugin extends Plugin {
             } catch (IOException ignored) {
                 // best effort cleanup
             }
+        }
+    }
+
+    private void saveVideoToGallery(Uri videoUri) {
+        try {
+            ContentResolver resolver = getContext().getContentResolver();
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Video.Media.DISPLAY_NAME, "VID_" + System.currentTimeMillis() + ".mp4");
+            values.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4");
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES);
+                values.put(MediaStore.Video.Media.IS_PENDING, 1);
+            }
+
+            Uri galleryUri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
+            if (galleryUri == null) {
+                Log.w("CameraMultiCapture", "Failed to create MediaStore entry for video");
+                return;
+            }
+
+            File sourceFile = new File(videoUri.getPath());
+            try (OutputStream out = resolver.openOutputStream(galleryUri);
+                 java.io.InputStream in = Files.newInputStream(sourceFile.toPath())) {
+                if (out == null) {
+                    Log.w("CameraMultiCapture", "Failed to open output stream for gallery video");
+                    return;
+                }
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, bytesRead);
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear();
+                values.put(MediaStore.Video.Media.IS_PENDING, 0);
+                resolver.update(galleryUri, values, null, null);
+            }
+        } catch (Exception e) {
+            Log.w("CameraMultiCapture", "Failed to save video to gallery: " + e.getMessage());
         }
     }
 
