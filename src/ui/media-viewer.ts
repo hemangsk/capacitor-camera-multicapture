@@ -15,6 +15,7 @@ type BiggerPictureItem = {
 };
 
 let bpInstance: BiggerPictureInstance | null = null;
+let activeBackHandler: (() => void) | null = null;
 const DEFAULT_MEDIA_WIDTH = 1920;
 const DEFAULT_MEDIA_HEIGHT = 1080;
 
@@ -204,6 +205,22 @@ function injectEditButton(container: HTMLElement, onEdit: () => void): void {
   container.appendChild(btn);
 }
 
+function registerBackHandler(): void {
+  removeBackHandler();
+  const handler = () => {
+    getInstance().close();
+  };
+  activeBackHandler = handler;
+  document.addEventListener('backbutton', handler);
+}
+
+function removeBackHandler(): void {
+  if (activeBackHandler) {
+    document.removeEventListener('backbutton', activeBackHandler);
+    activeBackHandler = null;
+  }
+}
+
 export function openImagePreview(src: string, thumb?: string, onEdit?: () => void): void {
   void (async () => {
     ensureStyles();
@@ -225,11 +242,13 @@ export function openImagePreview(src: string, thumb?: string, onEdit?: () => voi
       intro: 'fadeup',
       onOpen: (container) => {
         applyDynamicSafeArea(container);
+        registerBackHandler();
         if (onEdit) {
           injectEditButton(container, onEdit);
         }
       },
       onClose: (container) => {
+        removeBackHandler();
         if (!container) return;
         container.style.display = 'none';
       },
@@ -262,6 +281,12 @@ export function openVideoPreview(src: string, thumb?: string): void {
       intro: 'fadeup',
       onOpen: (container) => {
         applyDynamicSafeArea(container);
+        registerBackHandler();
+      },
+      onClose: (container) => {
+        removeBackHandler();
+        if (!container) return;
+        container.style.display = 'none';
       },
       onResize: (container) => {
         if (!container) return;
