@@ -2,7 +2,8 @@
  * Controller for camera operations
  */
 import { Capacitor } from '@capacitor/core';
-import type { CameraImageData, CameraMultiCapturePlugin } from '../definitions';
+import { TorchState } from '../definitions';
+import type { CameraImageData, CameraMultiCapturePlugin, CameraVideoData } from '../definitions';
 import type { CameraOverlayUIOptions } from '../types/ui-types';
 
 /**
@@ -23,6 +24,8 @@ export class CameraController {
   private options: CameraOverlayUIOptions;
   private flashMode: 'on' | 'off' | 'auto' = 'off';
   private flashAutoModeEnabled: boolean = true;
+  private torchState: TorchState = TorchState.Off;
+  private isRecording = false;
   private currentZoom = 1;
   private availableCameras: {
     hasUltrawide: boolean;
@@ -55,6 +58,7 @@ export class CameraController {
           y: rect.y
         },
         containerId: containerElement.id || 'camera-container',
+        maxRecordingDuration: this.options.maxRecordingDuration,
       };
 
       await this.plugin.start(startOptions);
@@ -82,6 +86,47 @@ export class CameraController {
       console.error('Failed to capture photo', error);
       throw error;
     }
+  }
+
+  /**
+   * Starts video recording.
+   */
+  async startVideoRecording(): Promise<void> {
+    try {
+      await this.plugin.startVideoRecording();
+      this.isRecording = true;
+    } catch (error) {
+      console.error('Failed to start video recording', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stops video recording and returns captured video metadata.
+   */
+  async stopVideoRecording(): Promise<CameraVideoData | undefined> {
+    try {
+      const result = await this.plugin.stopVideoRecording();
+      this.isRecording = false;
+
+      if (!result?.value?.uri) {
+        throw new Error('No URI returned from native video recording');
+      }
+
+      result.value.webPath = Capacitor.convertFileSrc(result.value.uri);
+      return result.value;
+    } catch (error) {
+      this.isRecording = false;
+      console.error('Failed to stop video recording', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Returns whether video recording is currently active.
+   */
+  getRecordingState(): boolean {
+    return this.isRecording;
   }
   
   /**
@@ -139,9 +184,9 @@ export class CameraController {
   async switchToPhysicalCamera(zoomFactor: number): Promise<void> {
     try {
       await this.plugin.switchToPhysicalCamera({ zoomFactor });
+      this.currentZoom = zoomFactor;
     } catch (error) {
       console.error('Failed to switch physical camera', error);
-      // Fallback to regular zoom
       await this.setZoom(zoomFactor);
     }
   }
@@ -159,6 +204,7 @@ export class CameraController {
   async switchCamera(): Promise<void> {
     try {
       await this.plugin.switchCamera();
+      this.availableCameras = null;
     } catch (error) {
       console.error('Failed to switch camera', error);
       throw error;
@@ -239,6 +285,43 @@ export class CameraController {
    */
   isFlashAutoModeEnabled(): boolean {
     return this.flashAutoModeEnabled;
+  }
+
+  /**
+   * Sets the torch (flashlight) state.
+   */
+  async setTorch(state: TorchState): Promise<void> {
+    try {
+      await this.plugin.setTorch({ enabled: state === TorchState.On });
+      this.torchState = state;
+    } catch (error) {
+      console.error('Failed to set torch', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Gets the current torch state.
+   */
+  async getTorch(): Promise<TorchState> {
+    try {
+      const result = await this.plugin.getTorch();
+      this.torchState = result.enabled ? TorchState.On : TorchState.Off;
+      return this.torchState;
+    } catch (error) {
+      console.error('Failed to get torch state', error);
+      return this.torchState;
+    }
+  }
+
+  /**
+   * Toggles the torch state and returns the new value.
+   */
+  async toggleTorch(): Promise<TorchState> {
+    const current = await this.getTorch();
+    const next = current === TorchState.On ? TorchState.Off : TorchState.On;
+    await this.setTorch(next);
+    return next;
   }
 
   /**

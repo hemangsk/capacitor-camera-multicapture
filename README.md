@@ -1,6 +1,6 @@
 # camera-multi-capture
 
-Capacitor plugin that lets the user Capture multiple photos with a customizable UI overlay in a single camera session
+Capacitor plugin that lets the user capture multiple photos and videos with a customizable UI overlay in a single camera session. Includes built-in image annotation powered by marker.js 2.
 
 ## Install
 
@@ -128,6 +128,29 @@ const result = await initialize({
   quality: 90
 });
 ```
+
+#### Video Recording (Tap & Long-Press)
+
+The capture button supports dual gestures: a quick tap captures a photo, and a long-press starts video recording. During recording a pulsing indicator with an elapsed timer is shown, and the capture button glows red.
+
+```typescript
+const result = await initialize({
+  containerId: 'camera-container',
+  quality: 90,
+  maxRecordingDuration: 30, // seconds; auto-stops when reached
+});
+
+// result.images  – captured photos
+// result.videos  – captured videos (uri, thumbnail, duration)
+```
+
+Videos appear as thumbnails with a play badge and duration label. Tapping a video thumbnail opens a fullscreen preview.
+
+#### Image Annotation (marker.js 2)
+
+After capturing photos you can annotate them directly in the camera session. Tap a thumbnail to open the fullscreen preview, then tap the edit (pencil) icon to launch the marker.js 2 editor.
+
+The editor supports freehand drawing, arrows, text, callouts, and more. Annotations are non-destructive — editor state is preserved so you can re-open and continue editing. On save the annotated image replaces the original in the gallery.
 
 #### Smart Zoom with Physical Camera Switching
 
@@ -405,6 +428,7 @@ Request camera and photo library permissions
 | Prop            | Type                           |
 | --------------- | ------------------------------ |
 | **`images`**    | <code>CameraImageData[]</code> |
+| **`videos`**    | <code>CameraVideoData[]</code> |
 | **`cancelled`** | <code>boolean</code>           |
 
 
@@ -523,3 +547,5 @@ MIT
 
 - ![isbecker](https://github.com/isbecker)'s comment at https://github.com/ionic-team/capacitor-plugins/issues/1616#issuecomment-1912900318
 - Capawesome plugins repository for formatting scripts and documentation setup.
+- [marker.js 2](https://markerjs.com/) for the image annotation engine.
+- [bigger-picture](https://github.com/henrygd/bigger-picture) for fullscreen media preview.

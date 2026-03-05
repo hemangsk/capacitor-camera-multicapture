@@ -1,8 +1,15 @@
 /**
  * Controller for gallery operations and captured images
  */
-import type { CameraImageData, CapturedImage, PhotoAddedEvent, PhotoRemovedEvent } from '../definitions';
+import type { CameraImageData, CameraVideoData, CapturedImage, CapturedVideo, PhotoAddedEvent, PhotoRemovedEvent } from '../definitions';
 import { createThumbnailContainer } from '../ui/ui-factory';
+import { openImagePreview, openVideoPreview } from '../ui/media-viewer';
+import { openImageEditor, isEditorActive } from '../ui/image-editor';
+import type { MarkerAreaState } from 'markerjs2';
+
+type CaptureEntry =
+  | { type: 'image'; item: CapturedImage }
+  | { type: 'video'; item: CapturedVideo };
 
 /**
  * Manages gallery operations and captured images
@@ -10,23 +17,33 @@ import { createThumbnailContainer } from '../ui/ui-factory';
 export class GalleryController {
   private galleryElement: HTMLElement;
   private images: CapturedImage[] = [];
+  private videos: CapturedVideo[] = [];
+  private captureOrder: CaptureEntry[] = [];
   private thumbnailStyle: { width?: string; height?: string };
   private onImageRemoved: (images: CapturedImage[]) => void;
   private onPhotoAdded?: (event: PhotoAddedEvent) => void;
   private onPhotoRemoved?: (event: PhotoRemovedEvent) => void;
+  private onMediaCountChanged?: (totalCount: number) => void;
+  private editorStates: Map<string, MarkerAreaState> = new Map();
 
   constructor(
     galleryElement: HTMLElement,
     thumbnailStyle: { width?: string; height?: string } = { width: '80px' },
     onImageRemoved?: (images: CapturedImage[]) => void,
     onPhotoAdded?: (event: PhotoAddedEvent) => void,
-    onPhotoRemoved?: (event: PhotoRemovedEvent) => void
+    onPhotoRemoved?: (event: PhotoRemovedEvent) => void,
+    onMediaCountChanged?: (totalCount: number) => void
   ) {
     this.galleryElement = galleryElement;
     this.thumbnailStyle = thumbnailStyle;
     this.onImageRemoved = onImageRemoved || (() => { });
     this.onPhotoAdded = onPhotoAdded;
     this.onPhotoRemoved = onPhotoRemoved;
+    this.onMediaCountChanged = onMediaCountChanged;
+  }
+
+  private notifyMediaCountChanged(): void {
+    this.onMediaCountChanged?.(this.images.length + this.videos.length);
   }
 
   /**
@@ -38,8 +55,10 @@ export class GalleryController {
     const newImage: CapturedImage = { id, data: imageData };
 
     this.images.push(newImage);
+    this.captureOrder.push({ type: 'image', item: newImage });
     this.renderGallery();
-    this.scrollToLatestImage();
+    this.scrollToLatest();
+    this.notifyMediaCountChanged();
 
     // Trigger photoAdded callback with detailed logging
     const eventData: PhotoAddedEvent = {
@@ -72,8 +91,12 @@ export class GalleryController {
   removeImage(imageId: string): void {
     const imageToRemove = this.images.find(img => img.id === imageId);
     this.images = this.images.filter(img => img.id !== imageId);
+    this.captureOrder = this.captureOrder.filter(
+      entry => !(entry.type === 'image' && entry.item.id === imageId)
+    );
     this.renderGallery();
     this.onImageRemoved(this.images);
+    this.notifyMediaCountChanged();
 
     // Trigger photoRemoved callback with detailed logging
     const eventData: PhotoRemovedEvent = {
@@ -101,14 +124,43 @@ export class GalleryController {
   }
 
   /**
+   * Adds a new video to the gallery
+   */
+  addVideo(videoData: CameraVideoData): void {
+    const id = `vid_${Date.now()}_${this.videos.length}`;
+    const newVideo: CapturedVideo = { id, data: videoData };
+
+    this.videos.push(newVideo);
+    this.captureOrder.push({ type: 'video', item: newVideo });
+    this.renderGallery();
+    this.scrollToLatest();
+    this.notifyMediaCountChanged();
+  }
+
+  /**
+   * Removes a video from the gallery
+   */
+  removeVideo(videoId: string): void {
+    this.videos = this.videos.filter(vid => vid.id !== videoId);
+    this.captureOrder = this.captureOrder.filter(
+      entry => !(entry.type === 'video' && entry.item.id === videoId)
+    );
+    this.renderGallery();
+    this.notifyMediaCountChanged();
+  }
+
+  /**
    * Clears all images from the gallery
    */
   clearGallery(): void {
     // Store images to remove before clearing
     const imagesToRemove = [...this.images];
     this.images = [];
+    this.videos = [];
+    this.captureOrder = [];
     this.renderGallery();
     this.onImageRemoved(this.images);
+    this.notifyMediaCountChanged();
 
     console.log(`[CameraMultiCapture] Clearing gallery - triggering ${imagesToRemove.length} photoRemoved callbacks`);
 
@@ -146,28 +198,100 @@ export class GalleryController {
   }
 
   /**
-   * Renders the gallery with current images
+   * Gets all captured videos
+   */
+  getVideos(): CapturedVideo[] {
+    return this.videos;
+  }
+
+  /**
+   * Replaces an existing image's data (e.g. after annotation) and re-renders.
+   */
+  updateImage(imageId: string, newData: CameraImageData): void {
+    const target = this.images.find(img => img.id === imageId);
+    if (!target) return;
+    target.data = newData;
+
+    const entry = this.captureOrder.find(
+      e => e.type === 'image' && e.item.id === imageId
+    );
+    if (entry && entry.type === 'image') {
+      entry.item.data = newData;
+    }
+
+    this.renderGallery();
+  }
+
+  /**
+   * Opens marker.js editor on the given image and replaces it on save.
+   */
+  private handleEditImage(image: CapturedImage): void {
+    if (isEditorActive()) return;
+
+    const src = image.data.webPath || image.data.uri;
+    const previousState = this.editorStates.get(image.id);
+
+    openImageEditor(src, previousState).then((result) => {
+      if (!result) return;
+
+      this.editorStates.set(image.id, result.state);
+
+      const updatedData: CameraImageData = {
+        ...image.data,
+        uri: result.dataUrl,
+        webPath: result.dataUrl,
+        thumbnail: result.dataUrl,
+      };
+      this.updateImage(image.id, updatedData);
+    }).catch((err) => {
+      console.error('[CameraMultiCapture] Image editor error:', err);
+    });
+  }
+
+  /**
+   * Renders the gallery in chronological capture order
    */
   private renderGallery(): void {
     this.galleryElement.innerHTML = '';
 
-    this.images.forEach(image => {
-      const thumbnailContainer = createThumbnailContainer(
-        image.data.thumbnail,
-        this.thumbnailStyle,
-        () => this.removeImage(image.id)
-      );
-
-      this.galleryElement.appendChild(thumbnailContainer);
+    this.captureOrder.forEach(entry => {
+      if (entry.type === 'image') {
+        const image = entry.item;
+        const src = image.data.webPath || image.data.uri;
+        const thumbnailContainer = createThumbnailContainer(
+          image.data.thumbnail,
+          this.thumbnailStyle,
+          () => this.removeImage(image.id),
+          {
+            onTap: () => openImagePreview(
+              src,
+              image.data.thumbnail,
+              () => this.handleEditImage(image),
+            ),
+          }
+        );
+        this.galleryElement.appendChild(thumbnailContainer);
+      } else {
+        const video = entry.item;
+        const src = video.data.webPath || video.data.uri;
+        const thumbnailContainer = createThumbnailContainer(
+          video.data.thumbnail,
+          this.thumbnailStyle,
+          () => this.removeVideo(video.id),
+          {
+            isVideo: true,
+            duration: video.data.duration,
+            onTap: () => openVideoPreview(src, video.data.thumbnail),
+          }
+        );
+        this.galleryElement.appendChild(thumbnailContainer);
+      }
     });
   }
-  /**
-     * Scrolls the gallery to show the most recently added image
-     */
-  private scrollToLatestImage(): void {
-    if (this.images.length === 0) return;
 
-    // Use requestAnimationFrame to ensure DOM is updated
+  private scrollToLatest(): void {
+    if (this.captureOrder.length === 0) return;
+
     requestAnimationFrame(() => {
       this.galleryElement.scrollTo({
         left: this.galleryElement.scrollWidth,

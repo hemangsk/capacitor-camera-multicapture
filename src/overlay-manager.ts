@@ -1,7 +1,15 @@
 /**
  * Overlay Manager - Main controller for camera overlay UI
  */
-import type { CameraMultiCapturePlugin, CameraOverlayResult, PhotoAddedEvent, PhotoRemovedEvent } from './definitions';
+import { TorchState } from './definitions';
+import type {
+  CameraMultiCapturePlugin,
+  CameraOverlayResult,
+  PhotoAddedEvent,
+  PhotoRemovedEvent,
+  VideoRecordingStartedEvent,
+  VideoRecordingStoppedEvent,
+} from './definitions';
 import { CameraController } from './controllers/camera-controller';
 import { GalleryController } from './controllers/gallery-controller';
 import { merge } from 'lodash';
@@ -15,6 +23,8 @@ import {
 } from './ui/layout-manager';
 import type { ButtonsConfig, CameraOverlayUIOptions } from './types/ui-types';
 import { PinchZoomHandler } from './ui/pinch-zoom-handler';
+import { bindCaptureGestures } from './ui/capture-gesture-handler';
+import type { CaptureGestureBinding } from './ui/capture-gesture-handler';
 
 /**
  * Main class to manage camera overlay UI
@@ -33,7 +43,17 @@ export class OverlayManager {
   private zoomButtonLevels: number[] = [];
   private shotCounter: HTMLElement | null = null;
   private shotCount: number = 0;
+  private torchButton: HTMLButtonElement | null = null;
+  private torchConfig: any | null = null;
   private pinchHandler: PinchZoomHandler | null = null;
+  private isRecordingVideo = false;
+  private captureButton: HTMLButtonElement | null = null;
+  private captureGestureBinding: CaptureGestureBinding | null = null;
+  private recordingIndicator: HTMLElement | null = null;
+  private recordingTimerText: HTMLElement | null = null;
+  private recordingStartedAt = 0;
+  private recordingIntervalId: number | null = null;
+  private boundOrientationHandler: (() => void) | null = null;
 
   constructor(plugin: CameraMultiCapturePlugin, options: CameraOverlayUIOptions) {
     this.options = options;
@@ -61,6 +81,30 @@ export class OverlayManager {
       window.dispatchEvent(event);
     } catch (error) {
       console.error('[CameraMultiCapture] Failed to emit photoRemoved event:', error);
+    }
+  }
+
+  /**
+   * Emits videoRecordingStarted event using pure JavaScript events.
+   */
+  private emitVideoRecordingStartedEvent(eventData: VideoRecordingStartedEvent): void {
+    try {
+      const event = new CustomEvent('videoRecordingStarted', { detail: eventData });
+      window.dispatchEvent(event);
+    } catch (error) {
+      console.error('[CameraMultiCapture] Failed to emit videoRecordingStarted event:', error);
+    }
+  }
+
+  /**
+   * Emits videoRecordingStopped event using pure JavaScript events.
+   */
+  private emitVideoRecordingStoppedEvent(eventData: VideoRecordingStoppedEvent): void {
+    try {
+      const event = new CustomEvent('videoRecordingStopped', { detail: eventData });
+      window.dispatchEvent(event);
+    } catch (error) {
+      console.error('[CameraMultiCapture] Failed to emit videoRecordingStopped event:', error);
     }
   }
 
@@ -107,7 +151,7 @@ export class OverlayManager {
         }
       } catch (error) {
         console.error('Failed to initialize camera overlay', error);
-        resolve({ images: [], cancelled: true });
+        resolve({ images: [], videos: [], cancelled: true });
         this.cleanup();
       }
     });
@@ -146,19 +190,20 @@ export class OverlayManager {
     this.galleryController = new GalleryController(
       galleryElement,
       this.options.thumbnailStyle,
-      (images) => {
-        if (this.options.showShotCounter) {
-          this.shotCount = images.length;
-          if (this.shotCounter) {
-            updateShotCounter(this.shotCounter, this.shotCount);
-          }
-        }
-      },
+      undefined,
       (eventData: PhotoAddedEvent) => {
         this.emitPhotoAddedEvent(eventData);
       },
       (eventData: PhotoRemovedEvent) => {
         this.emitPhotoRemovedEvent(eventData);
+      },
+      (totalCount: number) => {
+        if (this.options.showShotCounter) {
+          this.shotCount = totalCount;
+          if (this.shotCounter) {
+            updateShotCounter(this.shotCounter, this.shotCount);
+          }
+        }
       },
     );
 
@@ -167,6 +212,7 @@ export class OverlayManager {
 
     // Create buttons
     const captureBtn = createButton(buttons.capture);
+    this.captureButton = captureBtn;
 
     // Create shot counter only if enabled
     if (this.options.showShotCounter) {
@@ -176,32 +222,22 @@ export class OverlayManager {
     // Place capture button back in center (no container needed)
     bottomCells.middle.appendChild(captureBtn);
 
-    captureBtn.onclick = async () => {
-      try {
-        const imageData = await this.cameraController.captureImage();
-        if (imageData && this.galleryController) {
-          this.galleryController.addImage(imageData);
+    this.ensureRecordingGlowStyles();
 
-          // Increment shot counter and update UI (only if counter is enabled)
-          if (this.options.showShotCounter) {
-            this.shotCount++;
-            if (this.shotCounter) {
-              updateShotCounter(this.shotCounter, this.shotCount);
-            }
-          }
+    this.recordingIndicator = this.createRecordingIndicator();
+    Object.assign(this.recordingIndicator.style, {
+      position: 'absolute',
+      top: '12px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+    });
+    this.overlayElement.appendChild(this.recordingIndicator);
 
-          // Check if we've reached maxCaptures limit
-          if (this.options.maxCaptures && this.galleryController.getImages().length >= this.options.maxCaptures) {
-            // Auto-complete capture when limit is reached
-            setTimeout(() => {
-              this.completeCapture(false);
-            }, 100); // Small delay to ensure image is properly added
-          }
-        }
-      } catch (error) {
-        console.error('Failed to capture image', error);
-      }
-    };
+    this.captureGestureBinding = bindCaptureGestures(captureBtn, {
+      onTap: () => this.handleCaptureTap(),
+      onHoldStart: () => this.handleCaptureHoldStart(),
+      onHoldEnd: () => this.handleCaptureRelease(),
+    });
 
     // Only show Done button if not in single capture mode
     if (this.options.maxCaptures !== 1) {
@@ -246,6 +282,10 @@ export class OverlayManager {
       this.createSwitchCameraButton(buttons.switchCamera, positions.topRight);
     }
 
+    if (buttons.torch) {
+      this.createTorchButton(buttons.torch, positions.topRight);
+    }
+
     if (buttons.flash) {
       this.createFlashButton(buttons.flash, positions.topLeft);
     }
@@ -256,9 +296,8 @@ export class OverlayManager {
       this.zoomContainer = positions.zoomRow;
     }
 
-    window.addEventListener('orientationchange', () => {
-      this.handleOrientationChange();
-    });
+    this.boundOrientationHandler = () => this.handleOrientationChange();
+    window.addEventListener('orientationchange', this.boundOrientationHandler);
   }
 
   /**
@@ -270,12 +309,65 @@ export class OverlayManager {
     switchBtn.onclick = async () => {
       try {
         await this.cameraController.switchCamera();
+        await this.refreshTorchIconFromState();
       } catch (error) {
         console.error('Failed to switch camera', error);
       }
     };
 
     container.appendChild(switchBtn);
+  }
+
+  /**
+   * Creates the torch (flashlight) toggle button, stacked below the switch camera button.
+   */
+  private createTorchButton(config: any, container: HTMLElement): void {
+    const torchBtn = createButton({
+      ...config,
+      icon: config.offIcon,
+    });
+
+    this.torchButton = torchBtn;
+    this.torchConfig = config;
+
+    const updateTorchIcon = async (state: TorchState) => {
+      const icon = state === TorchState.On ? config.onIcon : config.offIcon;
+      if (icon) {
+        await setButtonIcon(torchBtn, icon);
+      }
+    };
+
+    torchBtn.onclick = async () => {
+      try {
+        const state = await this.cameraController.toggleTorch();
+        await updateTorchIcon(state);
+      } catch (error) {
+        console.error('Failed to toggle torch', error);
+      }
+    };
+
+    // Best-effort initial state sync; defaults to off if call fails.
+    this.cameraController.getTorch()
+      .then((state) => updateTorchIcon(state))
+      .catch(() => { /* initial sync is optional */ });
+
+    container.appendChild(torchBtn);
+  }
+
+  /**
+   * Refreshes the torch icon based on current native torch state.
+   */
+  private async refreshTorchIconFromState(): Promise<void> {
+    if (!this.torchButton || !this.torchConfig) return;
+    try {
+      const state = await this.cameraController.getTorch();
+      const icon = state === TorchState.On ? this.torchConfig.onIcon : this.torchConfig.offIcon;
+      if (icon) {
+        await setButtonIcon(this.torchButton, icon);
+      }
+    } catch {
+      // state sync failure is non-blocking; keep current icon
+    }
   }
 
   /**
@@ -442,16 +534,204 @@ export class OverlayManager {
   }
 
   /**
+   * Handles quick tap capture for still images.
+   */
+  private async handleCaptureTap(): Promise<void> {
+    try {
+      // Turn off torch before capture when flash is enabled to prevent LED conflict
+      const flashMode = this.cameraController.getFlashMode();
+      if (flashMode === 'on' || flashMode === 'auto') {
+        const torchState = await this.cameraController.getTorch();
+        if (torchState === TorchState.On) {
+          await this.cameraController.setTorch(TorchState.Off);
+          await this.refreshTorchIconFromState();
+        }
+      }
+
+      const imageData = await this.cameraController.captureImage();
+      if (!imageData || !this.galleryController) return;
+
+      this.galleryController.addImage(imageData);
+
+      if (this.options.maxCaptures && this.galleryController.getImages().length >= this.options.maxCaptures) {
+        setTimeout(() => this.completeCapture(false), 100);
+      }
+    } catch (error) {
+      console.error('Failed to capture image', error);
+    }
+  }
+
+  /**
+   * Handles long press start to begin video recording.
+   */
+  private async handleCaptureHoldStart(): Promise<void> {
+    if (this.isRecordingVideo || this.cameraController.getRecordingState()) {
+      return;
+    }
+    try {
+      await this.cameraController.startVideoRecording();
+      this.isRecordingVideo = true;
+      this.recordingStartedAt = Date.now();
+      this.startRecordingTimer();
+      this.showRecordingIndicator(true);
+      this.setCaptureGlow(true);
+      this.emitVideoRecordingStartedEvent({ timestamp: this.recordingStartedAt });
+    } catch (error) {
+      this.isRecordingVideo = false;
+      console.error('Failed to start video recording', error);
+    }
+  }
+
+  /**
+   * Handles pointer release for either tap photo or stop video recording.
+   */
+  private async handleCaptureRelease(): Promise<void> {
+    if (!this.isRecordingVideo) {
+      return;
+    }
+
+    try {
+      const videoData = await this.cameraController.stopVideoRecording();
+      this.isRecordingVideo = false;
+      this.stopRecordingTimer();
+      this.showRecordingIndicator(false);
+      this.setCaptureGlow(false);
+
+      if (videoData && this.galleryController) {
+        this.galleryController.addVideo(videoData);
+        this.emitVideoRecordingStoppedEvent({
+          video: videoData,
+          totalCount: this.galleryController.getVideos().length,
+        });
+      }
+    } catch (error) {
+      this.isRecordingVideo = false;
+      this.stopRecordingTimer();
+      this.showRecordingIndicator(false);
+      this.setCaptureGlow(false);
+      console.error('Failed to stop video recording', error);
+    }
+  }
+
+  private ensureRecordingGlowStyles(): void {
+    const id = 'cmmc-recording-glow-styles';
+    if (document.getElementById(id)) return;
+
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
+      @keyframes cmmcCaptureGlow {
+        0%   { filter: drop-shadow(0 0 6px rgba(255, 59, 48, 0.7)); }
+        50%  { filter: drop-shadow(0 0 18px rgba(255, 59, 48, 1)) drop-shadow(0 0 40px rgba(255, 59, 48, 0.5)); }
+        100% { filter: drop-shadow(0 0 6px rgba(255, 59, 48, 0.7)); }
+      }
+      .cmmc-capture-recording {
+        animation: cmmcCaptureGlow 1.2s ease-in-out infinite !important;
+        filter: drop-shadow(0 0 6px rgba(255, 59, 48, 0.7)) !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  private setCaptureGlow(active: boolean): void {
+    if (!this.captureButton) return;
+    if (active) {
+      this.captureButton.classList.add('cmmc-capture-recording');
+    } else {
+      this.captureButton.classList.remove('cmmc-capture-recording');
+    }
+  }
+
+  private createRecordingIndicator(): HTMLElement {
+    const indicator = document.createElement('div');
+    const dot = document.createElement('span');
+    const timer = document.createElement('span');
+    timer.textContent = '00:00';
+
+    Object.assign(indicator.style, {
+      display: 'none',
+      alignItems: 'center',
+      gap: '6px',
+      padding: '6px 10px',
+      borderRadius: '14px',
+      background: 'rgba(0, 0, 0, 0.55)',
+      color: '#ffffff',
+      fontSize: '12px',
+      fontWeight: '600',
+      pointerEvents: 'none',
+      zIndex: '4',
+    });
+
+    Object.assign(dot.style, {
+      width: '8px',
+      height: '8px',
+      borderRadius: '50%',
+      background: '#ff3b30',
+      boxShadow: '0 0 10px rgba(255, 59, 48, 0.9)',
+      animation: 'cmmcRecordPulse 1s infinite',
+    });
+
+    const styleTag = document.createElement('style');
+    styleTag.textContent = `
+      @keyframes cmmcRecordPulse {
+        0% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.35; transform: scale(0.9); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+    `;
+    indicator.appendChild(styleTag);
+    indicator.appendChild(dot);
+    indicator.appendChild(timer);
+    this.recordingTimerText = timer;
+
+    return indicator;
+  }
+
+  private showRecordingIndicator(visible: boolean): void {
+    if (!this.recordingIndicator) return;
+    this.recordingIndicator.style.display = visible ? 'flex' : 'none';
+    if (!visible && this.recordingTimerText) {
+      this.recordingTimerText.textContent = '00:00';
+    }
+  }
+
+  private startRecordingTimer(): void {
+    this.stopRecordingTimer();
+    this.recordingIntervalId = window.setInterval(() => {
+      if (!this.recordingTimerText) return;
+      const elapsedSeconds = Math.floor((Date.now() - this.recordingStartedAt) / 1000);
+      if (this.options.maxRecordingDuration && elapsedSeconds >= this.options.maxRecordingDuration) {
+        // Prevent duplicate stop calls while awaiting native stop completion.
+        this.stopRecordingTimer();
+        void this.handleCaptureRelease();
+        return;
+      }
+      const minutes = Math.floor(elapsedSeconds / 60);
+      const seconds = elapsedSeconds % 60;
+      this.recordingTimerText.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }, 200);
+  }
+
+  private stopRecordingTimer(): void {
+    if (this.recordingIntervalId !== null) {
+      clearInterval(this.recordingIntervalId);
+      this.recordingIntervalId = null;
+    }
+  }
+
+  /**
    * Completes the capture process
    */
   private completeCapture(cancelled: boolean): void {
     const images = this.galleryController?.getImages() || [];
+    const videos = this.galleryController?.getVideos() || [];
 
     this.cleanup();
 
     if (this.resolvePromise) {
       this.resolvePromise({
         images: !cancelled ? images.map(img => img.data) : [],
+        videos: !cancelled ? videos.map(vid => vid.data) : [],
         cancelled
       });
       this.resolvePromise = null;
@@ -462,6 +742,24 @@ export class OverlayManager {
    * Cleans up resources
    */
   private cleanup(): void {
+    if (this.captureGestureBinding) {
+      this.captureGestureBinding.detach();
+      this.captureGestureBinding = null;
+    }
+    if (this.isRecordingVideo) {
+      this.cameraController.stopVideoRecording().catch(() => {
+        // best effort stop during cleanup
+      });
+      this.isRecordingVideo = false;
+    }
+    this.stopRecordingTimer();
+    this.showRecordingIndicator(false);
+    this.setCaptureGlow(false);
+    this.recordingIndicator = null;
+    this.recordingTimerText = null;
+    this.captureButton = null;
+    this.torchButton = null;
+    this.torchConfig = null;
     if (this.pinchHandler) {
       this.pinchHandler.detach();
       this.pinchHandler = null;
@@ -477,15 +775,14 @@ export class OverlayManager {
     this.overlayElement = null;
     this.galleryController = null;
     this.isActive = false;
-    this.zoomContainer = null;
-    this.zoomConfig = null;
     this.shotCounter = null;
     this.shotCount = 0; // Reset shot count for next session
     if (this.bodyBackgroundColor) {
       document.body.style.backgroundColor = this.bodyBackgroundColor;
     }
-    window.removeEventListener('orientationchange', () => {
-      this.handleOrientationChange();
-    });
+    if (this.boundOrientationHandler) {
+      window.removeEventListener('orientationchange', this.boundOrientationHandler);
+      this.boundOrientationHandler = null;
+    }
   }
 }

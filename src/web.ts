@@ -1,5 +1,5 @@
 import { WebPlugin } from '@capacitor/core';
-import type { CameraImageData, CameraMultiCapturePlugin, CameraOverlayOptions, CameraOverlayResult, CameraPreviewRect, PermissionStatus } from './definitions';
+import type { CameraImageData, CameraMultiCapturePlugin, CameraOverlayOptions, CameraOverlayResult, CameraPreviewRect, CameraVideoData, PermissionStatus } from './definitions';
 
 export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCapturePlugin {
   async capture(): Promise<{ value: CameraImageData }> {
@@ -13,7 +13,16 @@ export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCaptu
 
   async start(_options?: CameraOverlayOptions): Promise<CameraOverlayResult> {
     console.warn('[CameraMultiCapture] start() not available on web. Use initialize instead.');
-    return { images: [], cancelled: true };
+    return { images: [], videos: [], cancelled: true };
+  }
+
+  async startVideoRecording(): Promise<void> {
+    console.warn('[CameraMultiCapture] startVideoRecording() not available on web.');
+  }
+
+  async stopVideoRecording(): Promise<{ value: CameraVideoData }> {
+    console.warn('[CameraMultiCapture] stopVideoRecording() not available on web.');
+    return { value: { uri: '', thumbnail: '', webPath: '', duration: 0 } };
   }
 
   async switchCamera(): Promise<void> {
@@ -31,6 +40,15 @@ export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCaptu
 
   async setFlash(_options: { flashMode: 'on' | 'off' | 'auto' }): Promise<void> {
     console.warn('[CameraMultiCapture] setFlash() not available on web.');
+  }
+
+  async setTorch(_options: { enabled: boolean }): Promise<void> {
+    console.warn('[CameraMultiCapture] setTorch() not available on web.');
+  }
+
+  async getTorch(): Promise<{ enabled: boolean }> {
+    console.warn('[CameraMultiCapture] getTorch() not available on web.');
+    return { enabled: false };
   }
 
   async getAvailableZoomLevels(): Promise<{ minZoom: number; maxZoom: number; presetLevels: number[] }> {
@@ -83,13 +101,15 @@ export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCaptu
 
       return {
         camera: cameraResult.state as 'granted' | 'denied' | 'prompt',
-        photos: photosState
+        photos: photosState,
+        audio: 'granted'
       };
     } catch (error) {
       // If permission query fails, assume we need to prompt
       return {
         camera: 'prompt',
-        photos: 'granted'
+        photos: 'granted',
+        audio: 'granted'
       };
     }
   }
@@ -115,7 +135,8 @@ export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCaptu
       // Return denied state
       return {
         camera: 'denied',
-        photos: 'granted' // Web doesn't have separate photos permission
+        photos: 'granted', // Web doesn't have separate photos permission
+        audio: 'granted'
       };
     }
   }
