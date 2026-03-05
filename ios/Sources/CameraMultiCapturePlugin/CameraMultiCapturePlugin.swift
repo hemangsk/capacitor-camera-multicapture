@@ -1,10 +1,8 @@
 import AVFoundation
 import Capacitor
-import CoreMotion
 import Foundation
 import Photos
 import BackgroundTasks
-import UIKit
 
 struct CameraConfig {
     var x: CGFloat
@@ -28,11 +26,15 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "start", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "capture", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "startVideoRecording", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "stopVideoRecording", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setZoom", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "switchCamera", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updatePreviewRect", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setFlash", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getFlash", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setTorch", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getTorch", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getAvailableZoomLevels", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getAvailableCameras", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "switchToPhysicalCamera", returnType: CAPPluginReturnPromise),
@@ -45,6 +47,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var captureSession: AVCaptureSession?
     var currentInput: AVCaptureDeviceInput?
     var photoOutput: AVCapturePhotoOutput?
+    var movieOutput: AVCaptureMovieFileOutput?
     var previewLayer: AVCaptureVideoPreviewLayer?
     var cameraPreviewView: UIView?
     var cameraPosition: AVCaptureDevice.Position = .back
@@ -52,13 +55,46 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var currentOrientation: AVCaptureVideoOrientation = .portrait
     let sessionQueue = DispatchQueue(label: "camera.session.queue")
     var captureDelegate: PhotoCaptureDelegate?
-    var motionManager: CMMotionManager?
+    var videoCaptureDelegate: VideoCaptureDelegate?
+    var pendingVideoStopCall: CAPPluginCall?
+    var maxRecordingDurationSeconds: Double = 0
+    var torchEnabledForRecording = false
+
+    private func detectCurrentOrientation() -> AVCaptureVideoOrientation {
+        switch UIDevice.current.orientation {
+        case .portrait:
+            return .portrait
+        case .portraitUpsideDown:
+            return .portraitUpsideDown
+        case .landscapeLeft:
+            return .landscapeRight
+        case .landscapeRight:
+            return .landscapeLeft
+        default:
+            if #available(iOS 13.0, *) {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    switch windowScene.interfaceOrientation {
+                    case .portrait:
+                        return .portrait
+                    case .portraitUpsideDown:
+                        return .portraitUpsideDown
+                    case .landscapeLeft:
+                        return .landscapeRight
+                    case .landscapeRight:
+                        return .landscapeLeft
+                    default:
+                        return .portrait
+                    }
+                }
+            }
+            return .portrait
+        }
+    }
 
     @objc func start(_ call: CAPPluginCall) {
         print("Received data from JS: \(call.dictionaryRepresentation)")
 
-        startMotionManager()
-
+        // Check camera permission before starting
         let cameraAuthStatus = AVCaptureDevice.authorizationStatus(for: .video)
         if cameraAuthStatus != .authorized {
             call.reject("Camera permission not granted. Please call requestPermissions() first.")
@@ -80,10 +116,11 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let position =
             (call.getString("cameraPosition") == "front") ? AVCaptureDevice.Position.front : .back
         let qualityName = call.getString("captureMode") ?? "high"
-        let qualityPreset: AVCaptureSession.Preset = (qualityName == "low") ? .high : .photo
+        let qualityPreset: AVCaptureSession.Preset = (qualityName == "low") ? .medium : .high
         let zoom = CGFloat(call.getFloat("zoom") ?? 1.0)
         let jpegQuality = CGFloat(call.getFloat("jpegQuality") ?? 0.8)
         let autofocus = call.getBool("autoFocus") ?? true
+        let maxRecordingDuration = Double(call.getFloat("maxRecordingDuration") ?? 0)
 
         let orientation: AVCaptureVideoOrientation
         if let rotation = call.getInt("rotation") {
@@ -114,6 +151,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         self.cameraPosition = config.cameraPosition
         self.currentFlashMode = config.flashMode
         self.currentOrientation = config.orientation
+        self.maxRecordingDurationSeconds = maxRecordingDuration > 0 ? maxRecordingDuration : 0
 
         self.sessionQueue.async {
             do {
@@ -131,14 +169,27 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func stop(_ call: CAPPluginCall) {
-        stopMotionManager()
-        
         DispatchQueue.main.async {
+            if self.torchEnabledForRecording, let device = self.currentInput?.device, device.hasTorch {
+                do {
+                    try device.lockForConfiguration()
+                    device.torchMode = .off
+                    device.unlockForConfiguration()
+                } catch { /* best effort */ }
+            }
+            self.torchEnabledForRecording = false
+
+            if self.movieOutput?.isRecording == true {
+                self.movieOutput?.stopRecording()
+            }
             self.captureSession?.stopRunning()
             self.previewLayer?.removeFromSuperlayer()
             self.captureSession = nil
             self.currentInput = nil
             self.photoOutput = nil
+            self.movieOutput = nil
+            self.videoCaptureDelegate = nil
+            self.pendingVideoStopCall = nil
             call.resolve()
         }
     }
@@ -168,6 +219,19 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
+        // Turn off torch before capture when flash is enabled; the LED is shared
+        // hardware so an active torch prevents the flash from firing correctly.
+        if currentFlashMode != .off,
+           let device = currentInput?.device, device.hasTorch, device.torchMode == .on {
+            do {
+                try device.lockForConfiguration()
+                device.torchMode = .off
+                device.unlockForConfiguration()
+            } catch {
+                print("[CameraMultiCapture] Failed to turn off torch before flash capture: \(error)")
+            }
+        }
+
         let resultType = call.getString("resultType") ?? "base64"
         let settings = AVCapturePhotoSettings()
         settings.isHighResolutionPhotoEnabled = photoOutput.isHighResolutionCaptureEnabled
@@ -177,8 +241,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             settings.flashMode = currentFlashMode
         }
         
-        currentOrientation = detectCurrentOrientation()
-        
+        // Set photo orientation to match current preview orientation
         if let connection = photoOutput.connection(with: .video) {
             connection.videoOrientation = currentOrientation
             // Prevent front camera from capturing mirrored images
@@ -191,6 +254,139 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         self.captureDelegate = delegate
 
         photoOutput.capturePhoto(with: settings, delegate: delegate)
+    }
+
+    @objc func startVideoRecording(_ call: CAPPluginCall) {
+        let audioAuthStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        if audioAuthStatus == .denied || audioAuthStatus == .restricted {
+            call.reject("Microphone permission denied. Please enable microphone access in Settings.")
+            return
+        }
+        if audioAuthStatus == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        self.startVideoRecordingInternal(call)
+                    } else {
+                        call.reject("Microphone permission denied.")
+                    }
+                }
+            }
+            return
+        }
+
+        startVideoRecordingInternal(call)
+    }
+
+    private func startVideoRecordingInternal(_ call: CAPPluginCall) {
+        guard let movieOutput = movieOutput else {
+            call.reject("Video output not initialized")
+            return
+        }
+        guard !movieOutput.isRecording else {
+            call.reject("Video recording is already in progress")
+            return
+        }
+
+        currentOrientation = detectCurrentOrientation()
+        if let videoConnection = movieOutput.connection(with: .video) {
+            videoConnection.videoOrientation = currentOrientation
+            if cameraPosition == .front {
+                videoConnection.isVideoMirrored = false
+            }
+        }
+
+        if maxRecordingDurationSeconds > 0 {
+            movieOutput.maxRecordedDuration = CMTime(
+                seconds: maxRecordingDurationSeconds,
+                preferredTimescale: 600
+            )
+        } else {
+            movieOutput.maxRecordedDuration = .invalid
+        }
+
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileName = UUID().uuidString + ".mp4"
+        let fileURL = tempDir.appendingPathComponent(fileName)
+
+        if currentFlashMode == .on, let device = currentInput?.device, device.hasTorch, device.isTorchAvailable {
+            do {
+                try device.lockForConfiguration()
+                device.torchMode = .on
+                device.unlockForConfiguration()
+                torchEnabledForRecording = true
+            } catch {
+                print("[CameraMultiCapture] Failed to enable torch for video recording: \(error)")
+            }
+        }
+
+        let delegate = VideoCaptureDelegate { [weak self] outputURL, error in
+            self?.handleVideoRecordingFinished(outputURL: outputURL, error: error)
+        }
+        self.videoCaptureDelegate = delegate
+        movieOutput.startRecording(to: fileURL, recordingDelegate: delegate)
+        call.resolve()
+    }
+
+    @objc func stopVideoRecording(_ call: CAPPluginCall) {
+        guard let movieOutput = movieOutput else {
+            call.reject("Video output not initialized")
+            return
+        }
+        guard movieOutput.isRecording else {
+            call.reject("No active video recording to stop")
+            return
+        }
+
+        pendingVideoStopCall = call
+        movieOutput.stopRecording()
+    }
+
+    private func handleVideoRecordingFinished(outputURL: URL, error: Error?) {
+        if torchEnabledForRecording {
+            if let device = currentInput?.device, device.hasTorch {
+                do {
+                    try device.lockForConfiguration()
+                    device.torchMode = .off
+                    device.unlockForConfiguration()
+                } catch { /* best effort */ }
+            }
+            torchEnabledForRecording = false
+        }
+
+        guard let call = pendingVideoStopCall else {
+            return
+        }
+        pendingVideoStopCall = nil
+        defer { videoCaptureDelegate = nil }
+
+        if let error = error {
+            call.reject("Video recording failed: \(error.localizedDescription)")
+            return
+        }
+
+        let thumbnail = generateVideoThumbnail(from: outputURL, size: 200) ?? ""
+        let duration = getVideoDuration(from: outputURL)
+
+        saveVideoToGallery(fileURL: outputURL)
+
+        call.resolve([
+            "value": [
+                "uri": outputURL.absoluteString,
+                "thumbnail": thumbnail,
+                "duration": duration
+            ]
+        ])
+    }
+
+    private func saveVideoToGallery(fileURL: URL) {
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetCreationRequest.forAsset().addResource(with: .video, fileURL: fileURL, options: nil)
+        }) { success, error in
+            if let error = error {
+                print("[CameraMultiCapture] Failed to save video to gallery: \(error.localizedDescription)")
+            }
+        }
     }
 
     @objc func setZoom(_ call: CAPPluginCall) {
@@ -264,11 +460,29 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func switchCamera(_ call: CAPPluginCall) {
         guard let session = captureSession,
-            let currentInput = currentInput
+              let currentInput = currentInput
         else {
             call.reject("Camera not initialized")
             return
         }
+
+        if movieOutput?.isRecording == true {
+            call.reject("Cannot switch camera while recording")
+            return
+        }
+
+        // Turn off torch on the current device before switching cameras
+        let device = currentInput.device
+        if device.hasTorch && device.torchMode == .on {
+            do {
+                try device.lockForConfiguration()
+                device.torchMode = .off
+                device.unlockForConfiguration()
+            } catch {
+                // Ignore failure here; we are switching cameras anyway
+            }
+        }
+
         session.beginConfiguration()
         session.removeInput(currentInput)
         self.cameraPosition = (self.cameraPosition == .back) ? .front : .back
@@ -331,6 +545,11 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         guard let session = captureSession,
               let zoomFactor = call.getFloat("zoomFactor") else {
             call.reject("Camera not initialized or missing zoomFactor parameter")
+            return
+        }
+
+        if movieOutput?.isRecording == true {
+            call.reject("Cannot switch camera while recording")
             return
         }
         
@@ -467,6 +686,12 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             photoOut.isHighResolutionCaptureEnabled = true
             self.photoOutput = photoOut
         }
+
+        let movieOut = AVCaptureMovieFileOutput()
+        if session.canAddOutput(movieOut) {
+            session.addOutput(movieOut)
+            self.movieOutput = movieOut
+        }
         session.commitConfiguration()
         self.captureSession = session
 
@@ -532,6 +757,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc public override func checkPermissions(_ call: CAPPluginCall) {
         let cameraAuthStatus = AVCaptureDevice.authorizationStatus(for: .video)
         let photosAuthStatus = PHPhotoLibrary.authorizationStatus()
+        let audioAuthStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         
         let cameraPermission: String
         switch cameraAuthStatus {
@@ -556,10 +782,23 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         @unknown default:
             photosPermission = "prompt"
         }
+
+        let audioPermission: String
+        switch audioAuthStatus {
+        case .authorized:
+            audioPermission = "granted"
+        case .denied, .restricted:
+            audioPermission = "denied"
+        case .notDetermined:
+            audioPermission = "prompt"
+        @unknown default:
+            audioPermission = "prompt"
+        }
         
         call.resolve([
             "camera": cameraPermission,
-            "photos": photosPermission
+            "photos": photosPermission,
+            "audio": audioPermission
         ])
     }
     
@@ -567,6 +806,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let group = DispatchGroup()
         var cameraResult = "prompt"
         var photosResult = "prompt"
+        var audioResult = "prompt"
         
         // Request camera permission
         group.enter()
@@ -590,12 +830,20 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             }
             group.leave()
         }
+
+        // Request microphone permission
+        group.enter()
+        AVCaptureDevice.requestAccess(for: .audio) { granted in
+            audioResult = granted ? "granted" : "denied"
+            group.leave()
+        }
         
         // Wait for both permissions and return result
         group.notify(queue: .main) {
             call.resolve([
                 "camera": cameraResult,
-                "photos": photosResult
+                "photos": photosResult,
+                "audio": audioResult
             ])
         }
     }
@@ -634,6 +882,34 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         }
         
         call.resolve(["flashMode": modeString])
+    }
+
+    @objc func setTorch(_ call: CAPPluginCall) {
+        guard let enabled = call.getBool("enabled") else {
+            call.reject("Missing enabled parameter")
+            return
+        }
+        guard let device = currentInput?.device, device.hasTorch, device.isTorchAvailable else {
+            call.reject("Torch not available on current camera")
+            return
+        }
+        do {
+            try device.lockForConfiguration()
+            device.torchMode = enabled ? .on : .off
+            device.unlockForConfiguration()
+            call.resolve()
+        } catch {
+            call.reject("Failed to set torch: \(error.localizedDescription)")
+        }
+    }
+
+    @objc func getTorch(_ call: CAPPluginCall) {
+        guard let device = currentInput?.device, device.hasTorch else {
+            call.resolve(["enabled": false])
+            return
+        }
+        let enabled = device.torchMode == .on
+        call.resolve(["enabled": enabled])
     }
 
     @objc func queueBackgroundUpload(_ call: CAPPluginCall) {
@@ -897,58 +1173,55 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let base64String = thumbnailData.base64EncodedString()
         return "data:image/jpeg;base64,\(base64String)"
     }
-    
-    // MARK: - Motion Manager for Orientation Detection
-    
-    private func startMotionManager() {
-        if motionManager == nil {
-            motionManager = CMMotionManager()
-        }
-        
-        if let motionManager = motionManager, motionManager.isAccelerometerAvailable {
-            motionManager.accelerometerUpdateInterval = 0.2
-            motionManager.startAccelerometerUpdates()
-        }
-    }
-    
-    private func stopMotionManager() {
-        motionManager?.stopAccelerometerUpdates()
-        motionManager = nil
-    }
-    
-    private func detectCurrentOrientation() -> AVCaptureVideoOrientation {
-        if let motionManager = motionManager,
-           let accelerometerData = motionManager.accelerometerData {
-            let acceleration = accelerometerData.acceleration
-            let x = acceleration.x
-            let y = acceleration.y
-            
-            if abs(y) > abs(x) {
-                if y < -0.5 {
-                    return .portrait
-                } else {
-                    return .portraitUpsideDown
-                }
-            } else {
-                if x > 0.5 {
-                    return .landscapeLeft
-                } else {
-                    return .landscapeRight
-                }
+
+    /**
+     * Generate thumbnail image from a video file.
+     */
+    func generateVideoThumbnail(from videoURL: URL, size: CGFloat) -> String? {
+        let asset = AVAsset(url: videoURL)
+        let imageGenerator = AVAssetImageGenerator(asset: asset)
+        imageGenerator.appliesPreferredTrackTransform = true
+        imageGenerator.maximumSize = CGSize(width: size, height: size)
+
+        do {
+            let cgImage = try imageGenerator.copyCGImage(at: .zero, actualTime: nil)
+            let image = UIImage(cgImage: cgImage)
+            guard let jpegData = image.jpegData(compressionQuality: 0.85) else {
+                return nil
             }
+            return "data:image/jpeg;base64,\(jpegData.base64EncodedString())"
+        } catch {
+            return nil
         }
-        switch UIDevice.current.orientation {
-        case .portrait:
-            return .portrait
-        case .portraitUpsideDown:
-            return .portraitUpsideDown
-        case .landscapeLeft:
-            return .landscapeRight
-        case .landscapeRight:
-            return .landscapeLeft
-        default:
-            return .portrait
+    }
+
+    /**
+     * Get video duration in seconds.
+     */
+    func getVideoDuration(from videoURL: URL) -> Double {
+        let asset = AVAsset(url: videoURL)
+        let duration = asset.duration
+        if duration.isValid && duration.seconds.isFinite {
+            return duration.seconds
         }
+        return 0
+    }
+}
+
+class VideoCaptureDelegate: NSObject, AVCaptureFileOutputRecordingDelegate {
+    private let completion: (URL, Error?) -> Void
+
+    init(completion: @escaping (URL, Error?) -> Void) {
+        self.completion = completion
+    }
+
+    func fileOutput(
+        _ output: AVCaptureFileOutput,
+        didFinishRecordingTo outputFileURL: URL,
+        from connections: [AVCaptureConnection],
+        error: Error?
+    ) {
+        completion(outputFileURL, error)
     }
 }
 
@@ -980,42 +1253,17 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
         }
         
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let originalImage = UIImage(data: data) else {
-                DispatchQueue.main.async {
-                    self.call.reject("Failed to load image from data")
-                }
-                return
-            }
-            
-            var metadata = self.extractMetadata(from: photo)
-
-
-            var correctedImage = originalImage.reformat()
-            // Mirror image horizontally if taken with front camera
-            if self.isFrontCamera {
-                correctedImage = correctedImage.mirrorHorizontally()
-            }
-            
-            self.overwriteMetadataOrientation(in: &metadata, to: 1)
-            
-            guard let correctedJpegData = self.generateJPEG(from: correctedImage, metadata: metadata, quality: 0.95) else {
-                DispatchQueue.main.async {
-                    self.call.reject("Failed to generate corrected JPEG")
-                }
-                return
-            }
-            
             let tempDir = FileManager.default.temporaryDirectory
             let fileName = UUID().uuidString + ".jpg"
             let fileURL = tempDir.appendingPathComponent(fileName)
             
             do {
-                try correctedJpegData.write(to: fileURL)
+                try data.write(to: fileURL)
                 
                 var imageData = [String: String]()
                 imageData["uri"] = fileURL.absoluteString
                 
-                if let thumbnailDataUri = self.plugin?.generateThumbnail(from: correctedJpegData, size: 200) {
+                if let thumbnailDataUri = self.plugin?.generateThumbnail(from: data, size: 200) {
                     imageData["thumbnail"] = thumbnailDataUri
                 } else {
                     imageData["thumbnail"] = ""
@@ -1031,137 +1279,15 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
             }
         }
     }
-    
-    // MARK: - Image Processing (Adapted from Capacitor Camera Plugin)
-    // Source: https://github.com/ionic-team/capacitor-plugins/blob/main/camera/ios/Sources/CameraPlugin/CameraPlugin.swift
-    // Copyright 2020-present Ionic (https://ionic.io)
-    // Licensed under MIT License
-    
-    /**
-     * Extract metadata from AVCapturePhoto
-     */
-    private func extractMetadata(from photo: AVCapturePhoto) -> [String: Any] {
-        var metadata: [String: Any] = [:]
-        
-        if let photoMetadata = photo.metadata as? [String: Any] {
-            metadata = photoMetadata
-        }
-        
-        return metadata
-    }
-    
-    /**
-     * Overwrite orientation in metadata dictionary recursively
-     * @param metadata Metadata dictionary to modify
-     * @param orientation Target orientation value (typically 1 for normal)
-     */
-    private func overwriteMetadataOrientation(in metadata: inout [String: Any], to orientation: Int) {
-        for key in metadata.keys {
-            if key == "Orientation", metadata[key] as? Int != nil {
-                metadata[key] = orientation
-            } else if var child = metadata[key] as? [String: Any] {
-                overwriteMetadataOrientation(in: &child, to: orientation)
-                metadata[key] = child
-            }
-        }
-    }
-    
-    /**
-     * Generate JPEG data with embedded metadata
-     * @param image Source image
-     * @param metadata Metadata dictionary to embed
-     * @param quality JPEG quality (0.0-1.0)
-     * @return JPEG data with metadata, or nil if failed
-     */
-    private func generateJPEG(from image: UIImage, metadata: [String: Any], quality: CGFloat) -> Data? {
-        // Convert UIImage to JPEG
-        guard let jpegData = image.jpegData(compressionQuality: quality) else {
-            return nil
-        }
-        
-        // Create image source from JPEG data
-        guard let source = CGImageSourceCreateWithData(jpegData as CFData, nil),
-              let type = CGImageSourceGetType(source) else {
-            return jpegData
-        }
-        
-        // Create output buffer
-        guard let output = NSMutableData(capacity: jpegData.count) as CFMutableData?,
-              let destination = CGImageDestinationCreateWithData(output, type, 1, nil) else {
-            return jpegData
-        }
-        
-        // Add image with metadata
-        CGImageDestinationAddImageFromSource(destination, source, 0, metadata as CFDictionary)
-        
-        // Finalize
-        guard CGImageDestinationFinalize(destination) else {
-            return jpegData
-        }
-        
-        return output as Data
-    }
 }
 
-// MARK: - UIImage Extension (Adapted from Capacitor Camera Plugin)
-// Source: https://github.com/ionic-team/capacitor-plugins/blob/main/camera/ios/Sources/CameraPlugin/CameraExtensions.swift
-// Copyright 2020-present Ionic (https://ionic.io)
-// Licensed under MIT License
-
 extension UIImage {
-    /**
-     * Generates a new image from the existing one, implicitly resetting any orientation
-     * @param size Optional target size (maintains aspect ratio)
-     * @return New image with corrected orientation
-     */
-    func reformat(to size: CGSize? = nil) -> UIImage {
-        let imageHeight = self.size.height
-        let imageWidth = self.size.width
-        
-        var maxWidth: CGFloat
-        if let size = size, size.width > 0 {
-            maxWidth = size.width
-        } else {
-            maxWidth = imageWidth
-        }
-        
-        let maxHeight: CGFloat
-        if let size = size, size.height > 0 {
-            maxHeight = size.height
-        } else {
-            maxHeight = imageHeight
-        }
-        
-        var targetWidth = min(imageWidth, maxWidth)
-        var targetHeight = (imageHeight * targetWidth) / imageWidth
-        if targetHeight > maxHeight {
-            targetWidth = (imageWidth * maxHeight) / imageHeight
-            targetHeight = maxHeight
-        }
-        
-        UIGraphicsBeginImageContextWithOptions(
-            .init(width: targetWidth, height: targetHeight),
-            false,  // opaque
-            1.0     // scale
-        )
-        self.draw(in: .init(origin: .zero, size: .init(width: targetWidth, height: targetHeight)))
-        let resizedImage = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        
-        return resizedImage ?? self
-    }
-
-    /**
-     * Mirrors the image horizontally (flips left-to-right)
-     * Used to correct front-camera selfies which are captured mirrored
-     */
     func mirrorHorizontally() -> UIImage {
         UIGraphicsBeginImageContextWithOptions(self.size, false, self.scale)
         guard let context = UIGraphicsGetCurrentContext() else {
             return self
         }
 
-        // Flip horizontally
         context.translateBy(x: self.size.width, y: 0)
         context.scaleBy(x: -1.0, y: 1.0)
 

@@ -18,6 +18,8 @@ export const defaultIcons = {
   flashOffIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M17 10h-4l3-8H7v11h3v9l7-12zm-7-8V4h2.17l-2.17 6H8.83L10 2z" fill="currentColor"/><path d="M2.81 2.81L1.39 4.22l6.39 6.39H7v11h3v9l1.68-2.9 9.12 9.12 1.41-1.41L2.81 2.81z" fill="currentColor"/></svg>`,
   flashOnIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M7 2v11h3v9l7-12h-4l3-8z" fill="currentColor"/></svg>`,
   flashAutoIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M7 2v11h3v9l7-12h-4l3-8z" fill="currentColor"/><text x="12" y="20" text-anchor="middle" font-size="8" font-weight="bold" fill="currentColor">A</text></svg>`,
+  torchOffIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M8 2h8v3h-2v2l-1 3v10H11V10L10 7V5H8z" fill="currentColor"/><path d="M9 18h6v2H9z" fill="currentColor"/></svg>`,
+  torchOnIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M8 2h8v3h-2v2l-1 3v10H11V10L10 7V5H8z" fill="currentColor"/><path d="M6 2l2 3M18 2l-2 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M9 18h6v2H9z" fill="currentColor"/></svg>`,
 };
 
 /**
@@ -68,6 +70,18 @@ export const defaultButtons: ButtonsConfig = {
   },
   switchCamera: {
     icon: defaultIcons.switchCameraIcon,
+    style: {
+      radius: 30,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      color: '#ffffff',
+      padding: '10px',
+      size: 24
+    },
+    position: 'topRight'
+  },
+  torch: {
+    offIcon: defaultIcons.torchOffIcon,
+    onIcon: defaultIcons.torchOnIcon,
     style: {
       radius: 30,
       backgroundColor: 'rgba(0,0,0,0.5)',
