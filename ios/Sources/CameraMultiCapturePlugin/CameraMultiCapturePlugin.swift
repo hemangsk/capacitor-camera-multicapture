@@ -1,10 +1,8 @@
 import AVFoundation
 import Capacitor
-import CoreMotion
 import Foundation
 import Photos
 import BackgroundTasks
-import UIKit
 
 struct CameraConfig {
     var x: CGFloat
@@ -59,15 +57,44 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var captureDelegate: PhotoCaptureDelegate?
     var videoCaptureDelegate: VideoCaptureDelegate?
     var pendingVideoStopCall: CAPPluginCall?
-    var motionManager: CMMotionManager?
     var maxRecordingDurationSeconds: Double = 0
     var torchEnabledForRecording = false
+
+    private func detectCurrentOrientation() -> AVCaptureVideoOrientation {
+        switch UIDevice.current.orientation {
+        case .portrait:
+            return .portrait
+        case .portraitUpsideDown:
+            return .portraitUpsideDown
+        case .landscapeLeft:
+            return .landscapeRight
+        case .landscapeRight:
+            return .landscapeLeft
+        default:
+            if #available(iOS 13.0, *) {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    switch windowScene.interfaceOrientation {
+                    case .portrait:
+                        return .portrait
+                    case .portraitUpsideDown:
+                        return .portraitUpsideDown
+                    case .landscapeLeft:
+                        return .landscapeRight
+                    case .landscapeRight:
+                        return .landscapeLeft
+                    default:
+                        return .portrait
+                    }
+                }
+            }
+            return .portrait
+        }
+    }
 
     @objc func start(_ call: CAPPluginCall) {
         print("Received data from JS: \(call.dictionaryRepresentation)")
 
-        startMotionManager()
-
+        // Check camera permission before starting
         let cameraAuthStatus = AVCaptureDevice.authorizationStatus(for: .video)
         if cameraAuthStatus != .authorized {
             call.reject("Camera permission not granted. Please call requestPermissions() first.")
@@ -142,8 +169,6 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func stop(_ call: CAPPluginCall) {
-        stopMotionManager()
-        
         DispatchQueue.main.async {
             if self.torchEnabledForRecording, let device = self.currentInput?.device, device.hasTorch {
                 do {
@@ -203,8 +228,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             settings.flashMode = currentFlashMode
         }
         
-        currentOrientation = detectCurrentOrientation()
-        
+        // Set photo orientation to match current preview orientation
         if let connection = photoOutput.connection(with: .video) {
             connection.videoOrientation = currentOrientation
             // Prevent front camera from capturing mirrored images
@@ -1169,59 +1193,6 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         }
         return 0
     }
-    
-    // MARK: - Motion Manager for Orientation Detection
-    
-    private func startMotionManager() {
-        if motionManager == nil {
-            motionManager = CMMotionManager()
-        }
-        
-        if let motionManager = motionManager, motionManager.isAccelerometerAvailable {
-            motionManager.accelerometerUpdateInterval = 0.2
-            motionManager.startAccelerometerUpdates()
-        }
-    }
-    
-    private func stopMotionManager() {
-        motionManager?.stopAccelerometerUpdates()
-        motionManager = nil
-    }
-    
-    private func detectCurrentOrientation() -> AVCaptureVideoOrientation {
-        if let motionManager = motionManager,
-           let accelerometerData = motionManager.accelerometerData {
-            let acceleration = accelerometerData.acceleration
-            let x = acceleration.x
-            let y = acceleration.y
-            
-            if abs(y) > abs(x) {
-                if y < -0.5 {
-                    return .portrait
-                } else {
-                    return .portraitUpsideDown
-                }
-            } else {
-                if x > 0.5 {
-                    return .landscapeLeft
-                } else {
-                    return .landscapeRight
-                }
-            }
-        }
-        switch UIDevice.current.orientation {
-        case .portrait:
-            return .portrait
-        case .portraitUpsideDown:
-            return .portraitUpsideDown
-        case .landscapeLeft:
-            return .landscapeRight
-        case .landscapeRight:
-            return .landscapeLeft
-        default:
-            return .portrait
-        }
-    }
 }
 
 class VideoCaptureDelegate: NSObject, AVCaptureFileOutputRecordingDelegate {
@@ -1269,42 +1240,17 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
         }
         
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let originalImage = UIImage(data: data) else {
-                DispatchQueue.main.async {
-                    self.call.reject("Failed to load image from data")
-                }
-                return
-            }
-            
-            var metadata = self.extractMetadata(from: photo)
-
-
-            var correctedImage = originalImage.reformat()
-            // Mirror image horizontally if taken with front camera
-            if self.isFrontCamera {
-                correctedImage = correctedImage.mirrorHorizontally()
-            }
-            
-            self.overwriteMetadataOrientation(in: &metadata, to: 1)
-            
-            guard let correctedJpegData = self.generateJPEG(from: correctedImage, metadata: metadata, quality: 0.95) else {
-                DispatchQueue.main.async {
-                    self.call.reject("Failed to generate corrected JPEG")
-                }
-                return
-            }
-            
             let tempDir = FileManager.default.temporaryDirectory
             let fileName = UUID().uuidString + ".jpg"
             let fileURL = tempDir.appendingPathComponent(fileName)
             
             do {
-                try correctedJpegData.write(to: fileURL)
+                try data.write(to: fileURL)
                 
                 var imageData = [String: String]()
                 imageData["uri"] = fileURL.absoluteString
                 
-                if let thumbnailDataUri = self.plugin?.generateThumbnail(from: correctedJpegData, size: 200) {
+                if let thumbnailDataUri = self.plugin?.generateThumbnail(from: data, size: 200) {
                     imageData["thumbnail"] = thumbnailDataUri
                 } else {
                     imageData["thumbnail"] = ""
@@ -1320,137 +1266,15 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
             }
         }
     }
-    
-    // MARK: - Image Processing (Adapted from Capacitor Camera Plugin)
-    // Source: https://github.com/ionic-team/capacitor-plugins/blob/main/camera/ios/Sources/CameraPlugin/CameraPlugin.swift
-    // Copyright 2020-present Ionic (https://ionic.io)
-    // Licensed under MIT License
-    
-    /**
-     * Extract metadata from AVCapturePhoto
-     */
-    private func extractMetadata(from photo: AVCapturePhoto) -> [String: Any] {
-        var metadata: [String: Any] = [:]
-        
-        if let photoMetadata = photo.metadata as? [String: Any] {
-            metadata = photoMetadata
-        }
-        
-        return metadata
-    }
-    
-    /**
-     * Overwrite orientation in metadata dictionary recursively
-     * @param metadata Metadata dictionary to modify
-     * @param orientation Target orientation value (typically 1 for normal)
-     */
-    private func overwriteMetadataOrientation(in metadata: inout [String: Any], to orientation: Int) {
-        for key in metadata.keys {
-            if key == "Orientation", metadata[key] as? Int != nil {
-                metadata[key] = orientation
-            } else if var child = metadata[key] as? [String: Any] {
-                overwriteMetadataOrientation(in: &child, to: orientation)
-                metadata[key] = child
-            }
-        }
-    }
-    
-    /**
-     * Generate JPEG data with embedded metadata
-     * @param image Source image
-     * @param metadata Metadata dictionary to embed
-     * @param quality JPEG quality (0.0-1.0)
-     * @return JPEG data with metadata, or nil if failed
-     */
-    private func generateJPEG(from image: UIImage, metadata: [String: Any], quality: CGFloat) -> Data? {
-        // Convert UIImage to JPEG
-        guard let jpegData = image.jpegData(compressionQuality: quality) else {
-            return nil
-        }
-        
-        // Create image source from JPEG data
-        guard let source = CGImageSourceCreateWithData(jpegData as CFData, nil),
-              let type = CGImageSourceGetType(source) else {
-            return jpegData
-        }
-        
-        // Create output buffer
-        guard let output = NSMutableData(capacity: jpegData.count) as CFMutableData?,
-              let destination = CGImageDestinationCreateWithData(output, type, 1, nil) else {
-            return jpegData
-        }
-        
-        // Add image with metadata
-        CGImageDestinationAddImageFromSource(destination, source, 0, metadata as CFDictionary)
-        
-        // Finalize
-        guard CGImageDestinationFinalize(destination) else {
-            return jpegData
-        }
-        
-        return output as Data
-    }
 }
 
-// MARK: - UIImage Extension (Adapted from Capacitor Camera Plugin)
-// Source: https://github.com/ionic-team/capacitor-plugins/blob/main/camera/ios/Sources/CameraPlugin/CameraExtensions.swift
-// Copyright 2020-present Ionic (https://ionic.io)
-// Licensed under MIT License
-
 extension UIImage {
-    /**
-     * Generates a new image from the existing one, implicitly resetting any orientation
-     * @param size Optional target size (maintains aspect ratio)
-     * @return New image with corrected orientation
-     */
-    func reformat(to size: CGSize? = nil) -> UIImage {
-        let imageHeight = self.size.height
-        let imageWidth = self.size.width
-        
-        var maxWidth: CGFloat
-        if let size = size, size.width > 0 {
-            maxWidth = size.width
-        } else {
-            maxWidth = imageWidth
-        }
-        
-        let maxHeight: CGFloat
-        if let size = size, size.height > 0 {
-            maxHeight = size.height
-        } else {
-            maxHeight = imageHeight
-        }
-        
-        var targetWidth = min(imageWidth, maxWidth)
-        var targetHeight = (imageHeight * targetWidth) / imageWidth
-        if targetHeight > maxHeight {
-            targetWidth = (imageWidth * maxHeight) / imageHeight
-            targetHeight = maxHeight
-        }
-        
-        UIGraphicsBeginImageContextWithOptions(
-            .init(width: targetWidth, height: targetHeight),
-            false,  // opaque
-            1.0     // scale
-        )
-        self.draw(in: .init(origin: .zero, size: .init(width: targetWidth, height: targetHeight)))
-        let resizedImage = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        
-        return resizedImage ?? self
-    }
-
-    /**
-     * Mirrors the image horizontally (flips left-to-right)
-     * Used to correct front-camera selfies which are captured mirrored
-     */
     func mirrorHorizontally() -> UIImage {
         UIGraphicsBeginImageContextWithOptions(self.size, false, self.scale)
         guard let context = UIGraphicsGetCurrentContext() else {
             return self
         }
 
-        // Flip horizontally
         context.translateBy(x: self.size.width, y: 0)
         context.scaleBy(x: -1.0, y: 1.0)
 
