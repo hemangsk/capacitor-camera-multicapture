@@ -190,19 +190,20 @@ export class OverlayManager {
     this.galleryController = new GalleryController(
       galleryElement,
       this.options.thumbnailStyle,
-      (images) => {
-        if (this.options.showShotCounter) {
-          this.shotCount = images.length;
-          if (this.shotCounter) {
-            updateShotCounter(this.shotCounter, this.shotCount);
-          }
-        }
-      },
+      undefined,
       (eventData: PhotoAddedEvent) => {
         this.emitPhotoAddedEvent(eventData);
       },
       (eventData: PhotoRemovedEvent) => {
         this.emitPhotoRemovedEvent(eventData);
+      },
+      (totalCount: number) => {
+        if (this.options.showShotCounter) {
+          this.shotCount = totalCount;
+          if (this.shotCounter) {
+            updateShotCounter(this.shotCounter, this.shotCount);
+          }
+        }
       },
     );
 

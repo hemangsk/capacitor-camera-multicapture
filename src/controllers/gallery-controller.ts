@@ -23,6 +23,7 @@ export class GalleryController {
   private onImageRemoved: (images: CapturedImage[]) => void;
   private onPhotoAdded?: (event: PhotoAddedEvent) => void;
   private onPhotoRemoved?: (event: PhotoRemovedEvent) => void;
+  private onMediaCountChanged?: (totalCount: number) => void;
   private editorStates: Map<string, MarkerAreaState> = new Map();
 
   constructor(
@@ -30,13 +31,19 @@ export class GalleryController {
     thumbnailStyle: { width?: string; height?: string } = { width: '80px' },
     onImageRemoved?: (images: CapturedImage[]) => void,
     onPhotoAdded?: (event: PhotoAddedEvent) => void,
-    onPhotoRemoved?: (event: PhotoRemovedEvent) => void
+    onPhotoRemoved?: (event: PhotoRemovedEvent) => void,
+    onMediaCountChanged?: (totalCount: number) => void
   ) {
     this.galleryElement = galleryElement;
     this.thumbnailStyle = thumbnailStyle;
     this.onImageRemoved = onImageRemoved || (() => { });
     this.onPhotoAdded = onPhotoAdded;
     this.onPhotoRemoved = onPhotoRemoved;
+    this.onMediaCountChanged = onMediaCountChanged;
+  }
+
+  private notifyMediaCountChanged(): void {
+    this.onMediaCountChanged?.(this.images.length + this.videos.length);
   }
 
   /**
@@ -51,6 +58,7 @@ export class GalleryController {
     this.captureOrder.push({ type: 'image', item: newImage });
     this.renderGallery();
     this.scrollToLatest();
+    this.notifyMediaCountChanged();
 
     // Trigger photoAdded callback with detailed logging
     const eventData: PhotoAddedEvent = {
@@ -88,6 +96,7 @@ export class GalleryController {
     );
     this.renderGallery();
     this.onImageRemoved(this.images);
+    this.notifyMediaCountChanged();
 
     // Trigger photoRemoved callback with detailed logging
     const eventData: PhotoRemovedEvent = {
@@ -125,6 +134,7 @@ export class GalleryController {
     this.captureOrder.push({ type: 'video', item: newVideo });
     this.renderGallery();
     this.scrollToLatest();
+    this.notifyMediaCountChanged();
   }
 
   /**
@@ -136,6 +146,7 @@ export class GalleryController {
       entry => !(entry.type === 'video' && entry.item.id === videoId)
     );
     this.renderGallery();
+    this.notifyMediaCountChanged();
   }
 
   /**
@@ -149,6 +160,7 @@ export class GalleryController {
     this.captureOrder = [];
     this.renderGallery();
     this.onImageRemoved(this.images);
+    this.notifyMediaCountChanged();
 
     console.log(`[CameraMultiCapture] Clearing gallery - triggering ${imagesToRemove.length} photoRemoved callbacks`);
 
