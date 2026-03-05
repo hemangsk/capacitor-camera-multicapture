@@ -91,6 +91,7 @@ public class CameraMultiCapturePlugin extends Plugin {
     private OrientationEventListener orientationEventListener;
     private int lastKnownOrientation = 0; // 0=portrait, 90=landscape-left, 180=upside-down, 270=landscape-right
     private boolean torchEnabled = false;
+    private boolean torchEnabledForRecording = false;
 
     private void ensurePreviewView() {
         if (previewView != null) return;
@@ -365,6 +366,11 @@ public class CameraMultiCapturePlugin extends Plugin {
                 }
             );
 
+            if (currentConfig.flashMode == ImageCapture.FLASH_MODE_ON && camera != null) {
+                camera.getCameraControl().enableTorch(true);
+                torchEnabledForRecording = true;
+            }
+
             call.resolve();
         } catch (Exception e) {
             call.reject("Failed to start video recording: " + e.getMessage(), e);
@@ -382,6 +388,15 @@ public class CameraMultiCapturePlugin extends Plugin {
     }
 
     private void handleVideoFinalize(VideoRecordEvent.Finalize finalizeEvent) {
+        if (torchEnabledForRecording) {
+            try {
+                if (camera != null) {
+                    camera.getCameraControl().enableTorch(false);
+                }
+            } catch (Exception ignored) { /* best effort */ }
+            torchEnabledForRecording = false;
+        }
+
         PluginCall call = pendingVideoStopCall;
         pendingVideoStopCall = null;
 

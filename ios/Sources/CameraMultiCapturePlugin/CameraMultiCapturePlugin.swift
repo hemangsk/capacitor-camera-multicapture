@@ -61,6 +61,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var pendingVideoStopCall: CAPPluginCall?
     var motionManager: CMMotionManager?
     var maxRecordingDurationSeconds: Double = 0
+    var torchEnabledForRecording = false
 
     @objc func start(_ call: CAPPluginCall) {
         print("Received data from JS: \(call.dictionaryRepresentation)")
@@ -262,6 +263,17 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let fileName = UUID().uuidString + ".mp4"
         let fileURL = tempDir.appendingPathComponent(fileName)
 
+        if currentFlashMode == .on, let device = currentInput?.device, device.hasTorch, device.isTorchAvailable {
+            do {
+                try device.lockForConfiguration()
+                device.torchMode = .on
+                device.unlockForConfiguration()
+                torchEnabledForRecording = true
+            } catch {
+                print("[CameraMultiCapture] Failed to enable torch for video recording: \(error)")
+            }
+        }
+
         let delegate = VideoCaptureDelegate { [weak self] outputURL, error in
             self?.handleVideoRecordingFinished(outputURL: outputURL, error: error)
         }
@@ -285,6 +297,17 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func handleVideoRecordingFinished(outputURL: URL, error: Error?) {
+        if torchEnabledForRecording {
+            if let device = currentInput?.device, device.hasTorch {
+                do {
+                    try device.lockForConfiguration()
+                    device.torchMode = .off
+                    device.unlockForConfiguration()
+                } catch { /* best effort */ }
+            }
+            torchEnabledForRecording = false
+        }
+
         guard let call = pendingVideoStopCall else {
             return
         }
