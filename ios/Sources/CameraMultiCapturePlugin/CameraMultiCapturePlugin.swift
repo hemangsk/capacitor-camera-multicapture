@@ -145,6 +145,15 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         stopMotionManager()
         
         DispatchQueue.main.async {
+            if self.torchEnabledForRecording, let device = self.currentInput?.device, device.hasTorch {
+                do {
+                    try device.lockForConfiguration()
+                    device.torchMode = .off
+                    device.unlockForConfiguration()
+                } catch { /* best effort */ }
+            }
+            self.torchEnabledForRecording = false
+
             if self.movieOutput?.isRecording == true {
                 self.movieOutput?.stopRecording()
             }

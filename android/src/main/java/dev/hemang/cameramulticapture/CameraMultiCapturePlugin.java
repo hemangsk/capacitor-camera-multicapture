@@ -243,6 +243,14 @@ public class CameraMultiCapturePlugin extends Plugin {
             try {
                 stopOrientationListener();
 
+                if (torchEnabledForRecording && camera != null) {
+                    try {
+                        camera.getCameraControl().enableTorch(false);
+                    } catch (Exception ignored) { /* best effort */ }
+                }
+                torchEnabledForRecording = false;
+                torchEnabled = false;
+
                 if (activeRecording != null) {
                     activeRecording.stop();
                     activeRecording = null;
@@ -259,6 +267,13 @@ public class CameraMultiCapturePlugin extends Plugin {
                     }
                     previewView = null;
                 }
+
+                camera = null;
+                imageCapture = null;
+                videoCapture = null;
+                pendingVideoStopCall = null;
+                currentVideoFile = null;
+
                 call.resolve();
             } catch (Exception e) {
                 call.reject("Failed to stop camera: " + e.getMessage(), e);
