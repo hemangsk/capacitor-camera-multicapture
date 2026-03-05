@@ -60,7 +60,7 @@ function ensureStyles(): void {
       margin-top: calc(env(safe-area-inset-top) + var(--cmmc-safe-top-extra)) !important;
       margin-bottom: calc(env(safe-area-inset-bottom) + var(--cmmc-safe-bottom-extra)) !important;
     }
-    .cmmc-bp-edit {
+    .bp-controls .cmmc-bp-edit {
       position: absolute;
       top: env(safe-area-inset-top);
       left: 0;
@@ -77,7 +77,10 @@ function ensureStyles(): void {
       padding: 0;
       -webkit-tap-highlight-color: transparent;
     }
-    .cmmc-bp-edit svg {
+    .bp-controls .cmmc-bp-edit:hover {
+      background: none;
+    }
+    .bp-controls .cmmc-bp-edit svg {
       filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6));
     }
   `;
@@ -190,7 +193,8 @@ function getVideoDimensions(src: string): Promise<{ width: number; height: numbe
 }
 
 function injectEditButton(container: HTMLElement, onEdit: () => void): void {
-  if (container.querySelector('.cmmc-bp-edit')) return;
+  const controls = container.querySelector('.bp-controls');
+  if (!controls || controls.querySelector('.cmmc-bp-edit')) return;
 
   const btn = document.createElement('button');
   btn.className = 'cmmc-bp-edit';
@@ -202,7 +206,7 @@ function injectEditButton(container: HTMLElement, onEdit: () => void): void {
     onEdit();
   };
 
-  container.appendChild(btn);
+  controls.appendChild(btn);
 }
 
 function registerBackHandler(): void {
@@ -247,10 +251,8 @@ export function openImagePreview(src: string, thumb?: string, onEdit?: () => voi
           injectEditButton(container, onEdit);
         }
       },
-      onClose: (container) => {
+      onClose: () => {
         removeBackHandler();
-        if (!container) return;
-        container.style.display = 'none';
       },
       onResize: (container) => {
         if (!container) return;
@@ -283,10 +285,8 @@ export function openVideoPreview(src: string, thumb?: string): void {
         applyDynamicSafeArea(container);
         registerBackHandler();
       },
-      onClose: (container) => {
+      onClose: () => {
         removeBackHandler();
-        if (!container) return;
-        container.style.display = 'none';
       },
       onResize: (container) => {
         if (!container) return;
