@@ -538,17 +538,20 @@ export class OverlayManager {
    */
   private async handleCaptureTap(): Promise<void> {
     try {
+      // Turn off torch before capture when flash is enabled to prevent LED conflict
+      const flashMode = this.cameraController.getFlashMode();
+      if (flashMode === 'on' || flashMode === 'auto') {
+        const torchState = await this.cameraController.getTorch();
+        if (torchState === TorchState.On) {
+          await this.cameraController.setTorch(TorchState.Off);
+          await this.refreshTorchIconFromState();
+        }
+      }
+
       const imageData = await this.cameraController.captureImage();
       if (!imageData || !this.galleryController) return;
 
       this.galleryController.addImage(imageData);
-
-      if (this.options.showShotCounter) {
-        this.shotCount++;
-        if (this.shotCounter) {
-          updateShotCounter(this.shotCounter, this.shotCount);
-        }
-      }
 
       if (this.options.maxCaptures && this.galleryController.getImages().length >= this.options.maxCaptures) {
         setTimeout(() => this.completeCapture(false), 100);
