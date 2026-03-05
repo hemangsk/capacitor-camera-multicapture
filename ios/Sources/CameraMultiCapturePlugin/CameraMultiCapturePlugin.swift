@@ -299,6 +299,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let thumbnail = generateVideoThumbnail(from: outputURL, size: 200) ?? ""
         let duration = getVideoDuration(from: outputURL)
 
+        saveVideoToGallery(fileURL: outputURL)
+
         call.resolve([
             "value": [
                 "uri": outputURL.absoluteString,
@@ -306,6 +308,16 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                 "duration": duration
             ]
         ])
+    }
+
+    private func saveVideoToGallery(fileURL: URL) {
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetCreationRequest.forAsset().addResource(with: .video, fileURL: fileURL, options: nil)
+        }) { success, error in
+            if let error = error {
+                print("[CameraMultiCapture] Failed to save video to gallery: \(error.localizedDescription)")
+            }
+        }
     }
 
     @objc func setZoom(_ call: CAPPluginCall) {
