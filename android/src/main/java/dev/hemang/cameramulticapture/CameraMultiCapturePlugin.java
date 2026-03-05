@@ -763,18 +763,26 @@ public class CameraMultiCapturePlugin extends Plugin {
 
     @PluginMethod
     public void switchCamera(PluginCall call) {
+        if (activeRecording != null) {
+            call.reject("Cannot switch camera while recording");
+            return;
+        }
+
         currentConfig.lensFacing = (currentConfig.lensFacing == CameraSelector.LENS_FACING_BACK)
             ? CameraSelector.LENS_FACING_FRONT
             : CameraSelector.LENS_FACING_BACK;
 
         // If we are switching to the front camera, ensure the torch is turned off
-        if (currentConfig.lensFacing == CameraSelector.LENS_FACING_FRONT && torchEnabled && camera != null) {
-            try {
-                camera.getCameraControl().enableTorch(false);
-            } catch (Exception e) {
-                Log.w("CameraMultiCapture", "Failed to disable torch on camera switch: " + e.getMessage());
+        if (currentConfig.lensFacing == CameraSelector.LENS_FACING_FRONT && camera != null) {
+            if (torchEnabled || torchEnabledForRecording) {
+                try {
+                    camera.getCameraControl().enableTorch(false);
+                } catch (Exception e) {
+                    Log.w("CameraMultiCapture", "Failed to disable torch on camera switch: " + e.getMessage());
+                }
             }
             torchEnabled = false;
+            torchEnabledForRecording = false;
         }
 
         try {
@@ -929,6 +937,11 @@ public class CameraMultiCapturePlugin extends Plugin {
 
     @PluginMethod
     public void switchToPhysicalCamera(PluginCall call) {
+        if (activeRecording != null) {
+            call.reject("Cannot switch camera while recording");
+            return;
+        }
+
         Float zoomFactor = call.getFloat("zoomFactor");
         if (zoomFactor == null) {
             call.reject("Missing zoomFactor parameter");

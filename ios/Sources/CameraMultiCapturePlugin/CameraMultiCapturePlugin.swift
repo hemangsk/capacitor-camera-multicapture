@@ -429,6 +429,11 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
+        if movieOutput?.isRecording == true {
+            call.reject("Cannot switch camera while recording")
+            return
+        }
+
         // Turn off torch on the current device before switching cameras
         let device = currentInput.device
         if device.hasTorch && device.torchMode == .on {
@@ -503,6 +508,11 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         guard let session = captureSession,
               let zoomFactor = call.getFloat("zoomFactor") else {
             call.reject("Camera not initialized or missing zoomFactor parameter")
+            return
+        }
+
+        if movieOutput?.isRecording == true {
+            call.reject("Cannot switch camera while recording")
             return
         }
         
