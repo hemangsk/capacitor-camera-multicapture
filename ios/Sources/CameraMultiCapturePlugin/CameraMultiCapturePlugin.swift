@@ -219,6 +219,19 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
+        // Turn off torch before capture when flash is enabled; the LED is shared
+        // hardware so an active torch prevents the flash from firing correctly.
+        if currentFlashMode != .off,
+           let device = currentInput?.device, device.hasTorch, device.torchMode == .on {
+            do {
+                try device.lockForConfiguration()
+                device.torchMode = .off
+                device.unlockForConfiguration()
+            } catch {
+                print("[CameraMultiCapture] Failed to turn off torch before flash capture: \(error)")
+            }
+        }
+
         let resultType = call.getString("resultType") ?? "base64"
         let settings = AVCapturePhotoSettings()
         settings.isHighResolutionPhotoEnabled = photoOutput.isHighResolutionCaptureEnabled

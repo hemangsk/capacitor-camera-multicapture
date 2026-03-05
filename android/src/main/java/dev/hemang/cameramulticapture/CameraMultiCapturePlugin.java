@@ -288,6 +288,17 @@ public class CameraMultiCapturePlugin extends Plugin {
             return;
         }
 
+        // Turn off torch before capture when flash is enabled; the LED is shared
+        // hardware so an active torch prevents the flash from firing correctly.
+        if (currentConfig.flashMode != ImageCapture.FLASH_MODE_OFF && torchEnabled && camera != null) {
+            try {
+                camera.getCameraControl().enableTorch(false);
+                torchEnabled = false;
+            } catch (Exception e) {
+                Log.w("CameraMultiCapture", "Failed to turn off torch before flash capture: " + e.getMessage());
+            }
+        }
+
         int quality = call.getInt("quality", currentConfig.jpegQuality);
         
         int sensorOrientation = getRotationFromOrientation(lastKnownOrientation);
