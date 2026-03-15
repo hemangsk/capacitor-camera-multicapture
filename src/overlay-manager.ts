@@ -538,20 +538,13 @@ export class OverlayManager {
    */
   private async handleCaptureTap(): Promise<void> {
     try {
-      // Turn off torch before capture when flash is enabled to prevent LED conflict
-      const flashMode = this.cameraController.getFlashMode();
-      if (flashMode === 'on' || flashMode === 'auto') {
-        const torchState = await this.cameraController.getTorch();
-        if (torchState === TorchState.On) {
-          await this.cameraController.setTorch(TorchState.Off);
-          await this.refreshTorchIconFromState();
-        }
-      }
-
+      // Native (Android/iOS) turns off torch for the shot when flash is on and re-enables it after capture.
+      // Do not call setTorch(Off) here or it can run after native re-enables and turn torch off again.
       const imageData = await this.cameraController.captureImage();
       if (!imageData || !this.galleryController) return;
 
       this.galleryController.addImage(imageData);
+      await this.refreshTorchIconFromState();
 
       if (this.options.maxCaptures && this.galleryController.getImages().length >= this.options.maxCaptures) {
         setTimeout(() => this.completeCapture(false), 100);
@@ -604,6 +597,7 @@ export class OverlayManager {
           totalCount: this.galleryController.getVideos().length,
         });
       }
+      await this.refreshTorchIconFromState();
     } catch (error) {
       this.isRecordingVideo = false;
       this.stopRecordingTimer();

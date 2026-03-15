@@ -59,6 +59,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var pendingVideoStopCall: CAPPluginCall?
     var maxRecordingDurationSeconds: Double = 0
     var torchEnabledForRecording = false
+    var torchWasOnBeforeCapture = false
 
     private func detectCurrentOrientation() -> AVCaptureVideoOrientation {
         switch UIDevice.current.orientation {
@@ -227,6 +228,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                 try device.lockForConfiguration()
                 device.torchMode = .off
                 device.unlockForConfiguration()
+                torchWasOnBeforeCapture = true
             } catch {
                 print("[CameraMultiCapture] Failed to turn off torch before flash capture: \(error)")
             }
@@ -343,6 +345,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func handleVideoRecordingFinished(outputURL: URL, error: Error?) {
+        let wasOnForRecording = torchEnabledForRecording
         if torchEnabledForRecording {
             if let device = currentInput?.device, device.hasTorch {
                 do {
@@ -352,6 +355,15 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                 } catch { /* best effort */ }
             }
             torchEnabledForRecording = false
+        }
+        if wasOnForRecording, let device = currentInput?.device, device.hasTorch, device.isTorchAvailable {
+            do {
+                try device.lockForConfiguration()
+                device.torchMode = .on
+                device.unlockForConfiguration()
+            } catch {
+                print("[CameraMultiCapture] Failed to re-enable torch after video: \(error)")
+            }
         }
 
         guard let call = pendingVideoStopCall else {
@@ -912,6 +924,21 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve(["enabled": enabled])
     }
 
+    func reEnableTorchAfterCapture() {
+        guard torchWasOnBeforeCapture, let device = currentInput?.device, device.hasTorch, device.isTorchAvailable else {
+            torchWasOnBeforeCapture = false
+            return
+        }
+        do {
+            try device.lockForConfiguration()
+            device.torchMode = .on
+            device.unlockForConfiguration()
+        } catch {
+            print("[CameraMultiCapture] Failed to re-enable torch after capture: \(error)")
+        }
+        torchWasOnBeforeCapture = false
+    }
+
     @objc func queueBackgroundUpload(_ call: CAPPluginCall) {
         guard let imageUri = call.getString("imageUri"),
               let uploadEndpoint = call.getString("uploadEndpoint"),
@@ -1270,6 +1297,7 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
                 }
                 
                 DispatchQueue.main.async {
+                    self.plugin?.reEnableTorchAfterCapture()
                     self.call.resolve(["value": imageData])
                 }
             } catch {

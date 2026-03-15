@@ -92,6 +92,7 @@ public class CameraMultiCapturePlugin extends Plugin {
     private int lastKnownOrientation = 0; // 0=portrait, 90=landscape-left, 180=upside-down, 270=landscape-right
     private boolean torchEnabled = false;
     private boolean torchEnabledForRecording = false;
+    private boolean torchWasOnBeforeCapture = false;
 
     private void ensurePreviewView() {
         if (previewView != null) return;
@@ -293,6 +294,7 @@ public class CameraMultiCapturePlugin extends Plugin {
         if (currentConfig.flashMode != ImageCapture.FLASH_MODE_OFF && torchEnabled && camera != null) {
             try {
                 camera.getCameraControl().enableTorch(false);
+                torchWasOnBeforeCapture = true;
                 torchEnabled = false;
             } catch (Exception e) {
                 Log.w("CameraMultiCapture", "Failed to turn off torch before flash capture: " + e.getMessage());
@@ -339,6 +341,16 @@ public class CameraMultiCapturePlugin extends Plugin {
                         } catch (Exception e) {
                             call.reject("Failed to process photo file", e);
                             return;
+                        }
+                        // Re-enable torch after photo when it was on before flash capture
+                        if (torchWasOnBeforeCapture && camera != null) {
+                            try {
+                                camera.getCameraControl().enableTorch(true);
+                                torchEnabled = true;
+                            } catch (Exception e) {
+                                Log.w("CameraMultiCapture", "Failed to re-enable torch after capture: " + e.getMessage());
+                            }
+                            torchWasOnBeforeCapture = false;
                         }
                         call.resolve(result);
                     }
@@ -414,6 +426,7 @@ public class CameraMultiCapturePlugin extends Plugin {
     }
 
     private void handleVideoFinalize(VideoRecordEvent.Finalize finalizeEvent) {
+        boolean wasOnForRecording = torchEnabledForRecording;
         if (torchEnabledForRecording) {
             try {
                 if (camera != null) {
@@ -421,6 +434,15 @@ public class CameraMultiCapturePlugin extends Plugin {
                 }
             } catch (Exception ignored) { /* best effort */ }
             torchEnabledForRecording = false;
+        }
+        // Re-enable torch after video when it was on for recording (flash-on)
+        if (wasOnForRecording && camera != null) {
+            try {
+                camera.getCameraControl().enableTorch(true);
+                torchEnabled = true;
+            } catch (Exception e) {
+                Log.w("CameraMultiCapture", "Failed to re-enable torch after video: " + e.getMessage());
+            }
         }
 
         PluginCall call = pendingVideoStopCall;
