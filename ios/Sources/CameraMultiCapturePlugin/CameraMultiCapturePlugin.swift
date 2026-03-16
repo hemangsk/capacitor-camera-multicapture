@@ -58,8 +58,42 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var videoCaptureDelegate: VideoCaptureDelegate?
     var pendingVideoStopCall: CAPPluginCall?
     var maxRecordingDurationSeconds: Double = 0
-    var torchEnabledForRecording = false
-    var torchWasOnBeforeCapture = false
+    private struct CameraStateSnapshot {
+        let torchOn: Bool
+        let flashMode: AVCaptureDevice.FlashMode
+        let zoomFactor: CGFloat
+
+        static func capture(device: AVCaptureDevice?, flashMode: AVCaptureDevice.FlashMode) -> CameraStateSnapshot {
+            let torchOn = (device?.torchMode == .on)
+            let zoomFactor = device?.videoZoomFactor ?? 1.0
+            return CameraStateSnapshot(torchOn: torchOn, flashMode: flashMode, zoomFactor: zoomFactor)
+        }
+
+        func restore(device: AVCaptureDevice?, currentFlashMode: inout AVCaptureDevice.FlashMode) {
+            currentFlashMode = flashMode
+            guard let device else { return }
+            do {
+                try device.lockForConfiguration()
+                if device.hasTorch, device.isTorchAvailable {
+                    device.torchMode = torchOn ? .on : .off
+                }
+                if zoomFactor >= 1.0 {
+                    device.videoZoomFactor = zoomFactor
+                }
+                device.unlockForConfiguration()
+            } catch {
+                print("[CameraMultiCapture] Failed to restore camera state: \(error)")
+            }
+        }
+    }
+
+    private var recordingStateSnapshot: CameraStateSnapshot?
+
+    private func restoreCameraState(_ snapshot: CameraStateSnapshot) {
+        var mode = currentFlashMode
+        snapshot.restore(device: currentInput?.device, currentFlashMode: &mode)
+        currentFlashMode = mode
+    }
 
     private func detectCurrentOrientation() -> AVCaptureVideoOrientation {
         switch UIDevice.current.orientation {
@@ -171,14 +205,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func stop(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
-            if self.torchEnabledForRecording, let device = self.currentInput?.device, device.hasTorch {
-                do {
-                    try device.lockForConfiguration()
-                    device.torchMode = .off
-                    device.unlockForConfiguration()
-                } catch { /* best effort */ }
-            }
-            self.torchEnabledForRecording = false
+            self.recordingStateSnapshot = nil
 
             if self.movieOutput?.isRecording == true {
                 self.movieOutput?.stopRecording()
@@ -220,6 +247,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
+        let preCaptureSnapshot = CameraStateSnapshot.capture(device: currentInput?.device, flashMode: currentFlashMode)
+
         // Turn off torch before capture when flash is enabled; the LED is shared
         // hardware so an active torch prevents the flash from firing correctly.
         if currentFlashMode != .off,
@@ -228,7 +257,6 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                 try device.lockForConfiguration()
                 device.torchMode = .off
                 device.unlockForConfiguration()
-                torchWasOnBeforeCapture = true
             } catch {
                 print("[CameraMultiCapture] Failed to turn off torch before flash capture: \(error)")
             }
@@ -252,7 +280,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             }
         }
         
-        let delegate = PhotoCaptureDelegate(plugin: self, call: call, resultType: resultType, isFrontCamera: cameraPosition == .front)
+        let delegate = PhotoCaptureDelegate(plugin: self, call: call, resultType: resultType, isFrontCamera: cameraPosition == .front, preCaptureSnapshot: preCaptureSnapshot)
         self.captureDelegate = delegate
 
         photoOutput.capturePhoto(with: settings, delegate: delegate)
@@ -311,12 +339,13 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let fileName = UUID().uuidString + ".mp4"
         let fileURL = tempDir.appendingPathComponent(fileName)
 
+        recordingStateSnapshot = CameraStateSnapshot.capture(device: currentInput?.device, flashMode: currentFlashMode)
+
         if currentFlashMode == .on, let device = currentInput?.device, device.hasTorch, device.isTorchAvailable {
             do {
                 try device.lockForConfiguration()
                 device.torchMode = .on
                 device.unlockForConfiguration()
-                torchEnabledForRecording = true
             } catch {
                 print("[CameraMultiCapture] Failed to enable torch for video recording: \(error)")
             }
@@ -345,26 +374,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func handleVideoRecordingFinished(outputURL: URL, error: Error?) {
-        let wasOnForRecording = torchEnabledForRecording
-        if torchEnabledForRecording {
-            if let device = currentInput?.device, device.hasTorch {
-                do {
-                    try device.lockForConfiguration()
-                    device.torchMode = .off
-                    device.unlockForConfiguration()
-                } catch { /* best effort */ }
-            }
-            torchEnabledForRecording = false
-        }
-        if wasOnForRecording, let device = currentInput?.device, device.hasTorch, device.isTorchAvailable {
-            do {
-                try device.lockForConfiguration()
-                device.torchMode = .on
-                device.unlockForConfiguration()
-            } catch {
-                print("[CameraMultiCapture] Failed to re-enable torch after video: \(error)")
-            }
-        }
+        let snapshot = recordingStateSnapshot
+        recordingStateSnapshot = nil
 
         guard let call = pendingVideoStopCall else {
             return
@@ -389,6 +400,10 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                 "duration": duration
             ]
         ])
+
+        if let snapshot {
+            restoreCameraState(snapshot)
+        }
     }
 
     private func saveVideoToGallery(fileURL: URL) {
@@ -924,21 +939,6 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve(["enabled": enabled])
     }
 
-    func reEnableTorchAfterCapture() {
-        guard torchWasOnBeforeCapture, let device = currentInput?.device, device.hasTorch, device.isTorchAvailable else {
-            torchWasOnBeforeCapture = false
-            return
-        }
-        do {
-            try device.lockForConfiguration()
-            device.torchMode = .on
-            device.unlockForConfiguration()
-        } catch {
-            print("[CameraMultiCapture] Failed to re-enable torch after capture: \(error)")
-        }
-        torchWasOnBeforeCapture = false
-    }
-
     @objc func queueBackgroundUpload(_ call: CAPPluginCall) {
         guard let imageUri = call.getString("imageUri"),
               let uploadEndpoint = call.getString("uploadEndpoint"),
@@ -1257,12 +1257,14 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
     var call: CAPPluginCall
     var resultType: String
     var isFrontCamera: Bool
+    let preCaptureSnapshot: CameraMultiCapturePlugin.CameraStateSnapshot
 
-    init(plugin: CameraMultiCapturePlugin, call: CAPPluginCall, resultType: String, isFrontCamera: Bool) {
+    init(plugin: CameraMultiCapturePlugin, call: CAPPluginCall, resultType: String, isFrontCamera: Bool, preCaptureSnapshot: CameraMultiCapturePlugin.CameraStateSnapshot) {
         self.plugin = plugin
         self.call = call
         self.resultType = resultType
         self.isFrontCamera = isFrontCamera
+        self.preCaptureSnapshot = preCaptureSnapshot
     }
 
     func photoOutput(
@@ -1297,7 +1299,9 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
                 }
                 
                 DispatchQueue.main.async {
-                    self.plugin?.reEnableTorchAfterCapture()
+                    if let plugin = self.plugin {
+                        plugin.restoreCameraState(self.preCaptureSnapshot)
+                    }
                     self.call.resolve(["value": imageData])
                 }
             } catch {
