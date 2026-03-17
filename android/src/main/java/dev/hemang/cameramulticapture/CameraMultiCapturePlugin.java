@@ -91,7 +91,6 @@ public class CameraMultiCapturePlugin extends Plugin {
     private OrientationEventListener orientationEventListener;
     private int lastKnownOrientation = 0; // 0=portrait, 90=landscape-left, 180=upside-down, 270=landscape-right
     private boolean torchEnabled = false;
-    private boolean torchEnabledForRecording = false;
 
     private void ensurePreviewView() {
         if (previewView != null) return;
@@ -243,12 +242,11 @@ public class CameraMultiCapturePlugin extends Plugin {
             try {
                 stopOrientationListener();
 
-                if (torchEnabledForRecording && camera != null) {
+                if (camera != null) {
                     try {
                         camera.getCameraControl().enableTorch(false);
                     } catch (Exception ignored) { /* best effort */ }
                 }
-                torchEnabledForRecording = false;
                 torchEnabled = false;
 
                 if (activeRecording != null) {
@@ -394,7 +392,6 @@ public class CameraMultiCapturePlugin extends Plugin {
 
             if (currentConfig.flashMode == ImageCapture.FLASH_MODE_ON && camera != null) {
                 camera.getCameraControl().enableTorch(true);
-                torchEnabledForRecording = true;
             }
 
             call.resolve();
@@ -414,14 +411,11 @@ public class CameraMultiCapturePlugin extends Plugin {
     }
 
     private void handleVideoFinalize(VideoRecordEvent.Finalize finalizeEvent) {
-        if (torchEnabledForRecording) {
-            try {
-                if (camera != null) {
-                    camera.getCameraControl().enableTorch(false);
-                }
-            } catch (Exception ignored) { /* best effort */ }
-            torchEnabledForRecording = false;
-        }
+        try {
+            if (camera != null) {
+                camera.getCameraControl().enableTorch(false);
+            }
+        } catch (Exception ignored) { /* best effort */ }
 
         PluginCall call = pendingVideoStopCall;
         pendingVideoStopCall = null;
@@ -785,15 +779,12 @@ public class CameraMultiCapturePlugin extends Plugin {
 
         // If we are switching to the front camera, ensure the torch is turned off
         if (currentConfig.lensFacing == CameraSelector.LENS_FACING_FRONT && camera != null) {
-            if (torchEnabled || torchEnabledForRecording) {
-                try {
-                    camera.getCameraControl().enableTorch(false);
-                } catch (Exception e) {
-                    Log.w("CameraMultiCapture", "Failed to disable torch on camera switch: " + e.getMessage());
-                }
+            try {
+                camera.getCameraControl().enableTorch(false);
+            } catch (Exception e) {
+                Log.w("CameraMultiCapture", "Failed to disable torch on camera switch: " + e.getMessage());
             }
             torchEnabled = false;
-            torchEnabledForRecording = false;
         }
 
         try {

@@ -58,7 +58,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var videoCaptureDelegate: VideoCaptureDelegate?
     var pendingVideoStopCall: CAPPluginCall?
     var maxRecordingDurationSeconds: Double = 0
-    var torchEnabledForRecording = false
+
+
 
     private func detectCurrentOrientation() -> AVCaptureVideoOrientation {
         switch UIDevice.current.orientation {
@@ -170,14 +171,13 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func stop(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
-            if self.torchEnabledForRecording, let device = self.currentInput?.device, device.hasTorch {
+            if let device = self.currentInput?.device, device.hasTorch, device.torchMode != .off {
                 do {
                     try device.lockForConfiguration()
                     device.torchMode = .off
                     device.unlockForConfiguration()
                 } catch { /* best effort */ }
             }
-            self.torchEnabledForRecording = false
 
             if self.movieOutput?.isRecording == true {
                 self.movieOutput?.stopRecording()
@@ -314,7 +314,6 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                 try device.lockForConfiguration()
                 device.torchMode = .on
                 device.unlockForConfiguration()
-                torchEnabledForRecording = true
             } catch {
                 print("[CameraMultiCapture] Failed to enable torch for video recording: \(error)")
             }
@@ -343,15 +342,12 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func handleVideoRecordingFinished(outputURL: URL, error: Error?) {
-        if torchEnabledForRecording {
-            if let device = currentInput?.device, device.hasTorch {
-                do {
-                    try device.lockForConfiguration()
-                    device.torchMode = .off
-                    device.unlockForConfiguration()
-                } catch { /* best effort */ }
-            }
-            torchEnabledForRecording = false
+        if let device = currentInput?.device, device.hasTorch, device.torchMode != .off {
+            do {
+                try device.lockForConfiguration()
+                device.torchMode = .off
+                device.unlockForConfiguration()
+            } catch { /* best effort */ }
         }
 
         guard let call = pendingVideoStopCall else {
