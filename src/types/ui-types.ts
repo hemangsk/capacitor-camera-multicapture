@@ -83,4 +83,5 @@ export interface CameraOverlayUIOptions {
     enabled?: boolean;
     lockToNearestStep?: boolean;
   };
+  enableEditing?: boolean;
 }

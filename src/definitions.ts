@@ -122,6 +122,12 @@ export interface CameraOverlayOptions {
    * Pinch-to-zoom configuration for physical camera zoom control
    */
   pinchToZoom?: PinchToZoomOptions;
+  /**
+   * Whether to show the edit (annotate) button on photo previews.
+   * When false, markerjs2 is never loaded.
+   * @default false
+   */
+  enableEditing?: boolean;
 }
 
 
@@ -138,8 +144,20 @@ export interface CapturedImage {
  */
 export interface CameraImageData {
   uri: string;
-  thumbnail: string; // Optimized thumbnail as Base64 data URI
+  thumbnail: string;
   webPath?: string;
+  /**
+   * Original native file URI before any annotation was applied.
+   * Present only on images that were edited; gives access to the
+   * unannotated source while `uri` / `webPath` hold the annotated render.
+   */
+  sourceUri?: string;
+  /**
+   * markerjs2 editor state, present only when `enableEditing` is true
+   * and the image was annotated.
+   * Pass to `MarkerArea.restoreState()` to continue editing in the parent app.
+   */
+  editorState?: unknown;
 }
 
 /**
