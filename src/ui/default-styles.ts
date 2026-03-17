@@ -18,6 +18,33 @@ export const defaultIcons = {
   flashOffIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M17 10h-4l3-8H7v11h3v9l7-12zm-7-8V4h2.17l-2.17 6H8.83L10 2z" fill="currentColor"/><path d="M2.81 2.81L1.39 4.22l6.39 6.39H7v11h3v9l1.68-2.9 9.12 9.12 1.41-1.41L2.81 2.81z" fill="currentColor"/></svg>`,
   flashOnIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M7 2v11h3v9l7-12h-4l3-8z" fill="currentColor"/></svg>`,
   flashAutoIcon: `<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M7 2v11h3v9l7-12h-4l3-8z" fill="currentColor"/><text x="12" y="20" text-anchor="middle" font-size="8" font-weight="bold" fill="currentColor">A</text></svg>`,
+  torchOffIcon: `<svg width="194px" height="194px" viewBox="0 0 194 194" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Group 2</title>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Group-2" transform="translate(0.000000, 0.805826)" fill="currentColor">
+            <path d="M87.7530483,65.2720779 L127.351028,104.870058 L48.1550686,184.066017 L8.55708883,144.468037 L87.7530483,65.2720779 Z M92.9246212,94.2842712 C89.8004269,91.1600769 84.735107,91.1600769 81.6109127,94.2842712 L81.6109127,94.2842712 L63.9332432,111.961941 C60.8090488,115.086135 60.8090488,120.151455 63.9332432,123.275649 L63.9332432,123.275649 L68.8829906,128.225397 C72.007185,131.349591 77.0725048,131.349591 80.1966991,128.225397 L80.1966991,128.225397 L97.8743687,110.547727 C100.998563,107.423533 100.998563,102.358213 97.8743687,99.2340187 L97.8743687,99.2340187 Z" id="Combined-Shape"></path>
+            <rect id="Rectangle" transform="translate(149.500000, 44.194174) rotate(-45.000000) translate(-149.500000, -44.194174) " x="135" y="-3.80582618" width="29" height="96"></rect>
+            <polygon id="Polygon" transform="translate(122.916857, 69.909099) rotate(45.000000) translate(-122.916857, -69.909099) " points="122.916857 52.6185734 168.416857 52.409099 151.037404 87.409099 94.7963109 87.409099 77.4168574 52.409099"></polygon>
+            <circle id="Oval" cx="27.75" cy="164.944174" r="27.75"></circle>
+        </g>
+    </g>
+  </svg>`,
+  torchOnIcon: `<svg width="223px" height="223px" viewBox="0 0 223 223" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Group 3</title>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Group-3" transform="translate(0.000000, 0.614339)" fill="currentColor">
+            <g id="Group-2" transform="translate(0.000000, 29.191487)">
+                <path d="M87.7530483,65.2720779 L127.351028,104.870058 L48.1550686,184.066017 L8.55708883,144.468037 L87.7530483,65.2720779 Z M92.9246212,94.2842712 C89.8004269,91.1600769 84.735107,91.1600769 81.6109127,94.2842712 L81.6109127,94.2842712 L63.9332432,111.961941 C60.8090488,115.086135 60.8090488,120.151455 63.9332432,123.275649 L63.9332432,123.275649 L68.8829906,128.225397 C72.007185,131.349591 77.0725048,131.349591 80.1966991,128.225397 L80.1966991,128.225397 L97.8743687,110.547727 C100.998563,107.423533 100.998563,102.358213 97.8743687,99.2340187 L97.8743687,99.2340187 Z" id="Combined-Shape"></path>
+                <rect id="Rectangle" transform="translate(149.500000, 44.194174) rotate(-45.000000) translate(-149.500000, -44.194174) " x="135" y="-3.80582618" width="29" height="96"></rect>
+                <polygon id="Polygon" transform="translate(122.916857, 69.909099) rotate(45.000000) translate(-122.916857, -69.909099) " points="122.916857 52.6185734 168.416857 52.409099 151.037404 87.409099 94.7963109 87.409099 77.4168574 52.409099"></polygon>
+                <circle id="Oval" cx="27.75" cy="164.944174" r="27.75"></circle>
+            </g>
+            <rect id="Rectangle" transform="translate(162.530697, 22.848726) rotate(9.000000) translate(-162.530697, -22.848726) " x="158.530697" y="0.348725524" width="8" height="45" rx="4"></rect>
+            <path d="M188.82359,10.0558323 C191.032729,10.0558323 192.82359,11.8466933 192.82359,14.0558323 L192.82359,53.0558323 C192.82359,55.2649713 191.032729,57.0558323 188.82359,57.0558323 C186.614451,57.0558323 184.82359,55.2649713 184.82359,53.0558323 L184.82359,25.3323417 L184.82359,25.3323417 L184.82359,14.0558323 C184.82359,11.8466933 186.614451,10.0558323 188.82359,10.0558323 Z" id="Rectangle" transform="translate(188.823590, 33.555832) rotate(45.000000) translate(-188.823590, -33.555832) "></path>
+            <path d="M199.327317,37.616767 C201.536456,37.616767 203.327317,39.407628 203.327317,41.616767 L203.327317,79.616767 C203.327317,81.825906 201.536456,83.616767 199.327317,83.616767 C197.118178,83.616767 195.327317,81.825906 195.327317,79.616767 L195.327317,52.5682443 L195.327317,52.5682443 L195.327317,41.616767 C195.327317,39.407628 197.118178,37.616767 199.327317,37.616767 Z" id="Rectangle" transform="translate(199.327317, 60.616767) rotate(83.000000) translate(-199.327317, -60.616767) "></path>
+        </g>
+    </g>
+  </svg>`,
 };
 
 /**
@@ -68,6 +95,18 @@ export const defaultButtons: ButtonsConfig = {
   },
   switchCamera: {
     icon: defaultIcons.switchCameraIcon,
+    style: {
+      radius: 30,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      color: '#ffffff',
+      padding: '10px',
+      size: 24
+    },
+    position: 'topRight'
+  },
+  torch: {
+    offIcon: defaultIcons.torchOffIcon,
+    onIcon: defaultIcons.torchOnIcon,
     style: {
       radius: 30,
       backgroundColor: 'rgba(0,0,0,0.5)',

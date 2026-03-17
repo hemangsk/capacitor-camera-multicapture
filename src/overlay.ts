@@ -18,6 +18,7 @@ function convertButtonsConfig(buttons?: CameraOverlayButtons): Partial<ButtonsCo
     switchCamera: buttons.switchCamera,
     zoom: buttons.zoom,
     flash: buttons.flash,
+    torch: buttons.torch,
   };
 }
 
@@ -31,9 +32,11 @@ export const initialize = (options: CameraOverlayOptions): Promise<CameraOverlay
     thumbnailStyle: options.thumbnailStyle,
     buttons: convertButtonsConfig(options.buttons),
     maxCaptures: options.maxCaptures,
+    maxRecordingDuration: options.maxRecordingDuration,
     flashAutoModeEnabled: options.flashAutoModeEnabled,
     showShotCounter: options.showShotCounter ?? true, // Default to true for backward compatibility
     pinchToZoom: options.pinchToZoom,
+    enableEditing: options.enableEditing,
   };
   
   const overlayManager = new OverlayManager(plugin, uiOptions);

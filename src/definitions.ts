@@ -5,6 +5,11 @@ export interface ThumbnailStyle {
   height?: string;
 }
 
+export enum TorchState {
+  Off = 0,
+  On = 1,
+}
+
 export type CameraDirection = 'front' | 'back';
 
 export type CaptureMode = 'minimizeLatency' | 'maxQuality';
@@ -60,6 +65,16 @@ export interface CameraOverlayButtons {
     style?: ButtonStyle;
     position?: 'topLeft' | 'topRight' | 'custom';
   };
+  /**
+   * Torch (continuous flashlight) toggle button.
+   * Independent of capture flash and typically shown below switchCamera.
+   */
+  torch?: {
+    onIcon?: string;
+    offIcon?: string;
+    style?: ButtonStyle;
+    position?: 'topLeft' | 'topRight' | 'custom';
+  };
 }
 
 export interface CameraPreviewRect {
@@ -96,12 +111,23 @@ export interface CameraOverlayOptions {
   autoFocus?: boolean;
   flash?: 'on' | 'off' | 'auto';
   maxCaptures?: number;
+  /**
+   * Maximum video recording duration in seconds.
+   * If omitted, recording duration is unlimited until user releases.
+   */
+  maxRecordingDuration?: number;
   flashAutoModeEnabled?: boolean;
   showShotCounter?: boolean;
   /**
    * Pinch-to-zoom configuration for physical camera zoom control
    */
   pinchToZoom?: PinchToZoomOptions;
+  /**
+   * Whether to show the edit (annotate) button on photo previews.
+   * When false, markerjs2 is never loaded.
+   * @default false
+   */
+  enableEditing?: boolean;
 }
 
 
@@ -118,8 +144,38 @@ export interface CapturedImage {
  */
 export interface CameraImageData {
   uri: string;
+  thumbnail: string;
+  webPath?: string;
+  /**
+   * Original native file URI before any annotation was applied.
+   * Present only on images that were edited; gives access to the
+   * unannotated source while `uri` / `webPath` hold the annotated render.
+   */
+  sourceUri?: string;
+  /**
+   * markerjs2 editor state, present only when `enableEditing` is true
+   * and the image was annotated.
+   * Pass to `MarkerArea.restoreState()` to continue editing in the parent app.
+   */
+  editorState?: unknown;
+}
+
+/**
+ * Structure for video data returned by the camera
+ */
+export interface CameraVideoData {
+  uri: string;
   thumbnail: string; // Optimized thumbnail as Base64 data URI
   webPath?: string;
+  duration: number; // Duration in seconds
+}
+
+/**
+ * Interface for captured videos
+ */
+export interface CapturedVideo {
+  id: string;
+  data: CameraVideoData;
 }
 
 /**
@@ -138,8 +194,24 @@ export interface PhotoRemovedEvent {
   totalCount: number;
 }
 
+/**
+ * Event data for video recording started event
+ */
+export interface VideoRecordingStartedEvent {
+  timestamp: number;
+}
+
+/**
+ * Event data for video recording stopped event
+ */
+export interface VideoRecordingStoppedEvent {
+  video: CameraVideoData;
+  totalCount: number;
+}
+
 export interface CameraOverlayResult {
   images: CameraImageData[];
+  videos: CameraVideoData[];
   cancelled: boolean;
 }
 
@@ -149,6 +221,7 @@ export interface CameraOverlayResult {
 export interface PermissionStatus {
   camera: PermissionState;
   photos: PermissionState;
+  audio: PermissionState;
 }
 
 export interface CameraMultiCapturePlugin {
@@ -161,6 +234,16 @@ export interface CameraMultiCapturePlugin {
    * Captures a single frame.
    */
   capture(): Promise<{ value: CameraImageData }>;
+
+  /**
+   * Starts recording video.
+   */
+  startVideoRecording(): Promise<void>;
+
+  /**
+   * Stops recording video and returns video metadata.
+   */
+  stopVideoRecording(): Promise<{ value: CameraVideoData }>;
 
   /**
    * Stops and tears down the camera session.
@@ -220,6 +303,17 @@ export interface CameraMultiCapturePlugin {
    * Gets the current flash mode.
    */
   getFlash(): Promise<{ flashMode: 'on' | 'off' | 'auto' }>;
+
+  /**
+   * Sets the torch (continuous flashlight) on or off.
+   * Torch is independent of the capture flash setting.
+   */
+  setTorch(options: { enabled: boolean }): Promise<void>;
+
+  /**
+   * Gets whether the torch is currently enabled.
+   */
+  getTorch(): Promise<{ enabled: boolean }>;
 
   /**
    * Check camera and photo library permissions
