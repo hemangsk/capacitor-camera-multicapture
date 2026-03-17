@@ -53,7 +53,7 @@ function loadImageElement(src: string): Promise<HTMLImageElement> {
  */
 export function openImageEditor(
   src: string,
-  previousState?: MarkerAreaState,
+  previousState?: unknown,
 ): Promise<ImageEditorResult | null> {
   if (activeEditor) return Promise.resolve(null);
 
@@ -111,7 +111,7 @@ export function openImageEditor(
         markerArea.show();
 
         if (previousState) {
-          markerArea.restoreState(previousState);
+          markerArea.restoreState(previousState as MarkerAreaState);
         }
       } catch (_err) {
         activeEditor = null;
