@@ -205,6 +205,7 @@ export class OverlayManager {
           }
         }
       },
+      this.options.enableEditing ?? false,
     );
 
     // Merge default buttons with user-provided options

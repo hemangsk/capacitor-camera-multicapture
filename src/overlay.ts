@@ -36,6 +36,7 @@ export const initialize = (options: CameraOverlayOptions): Promise<CameraOverlay
     flashAutoModeEnabled: options.flashAutoModeEnabled,
     showShotCounter: options.showShotCounter ?? true, // Default to true for backward compatibility
     pinchToZoom: options.pinchToZoom,
+    enableEditing: options.enableEditing,
   };
   
   const overlayManager = new OverlayManager(plugin, uiOptions);

@@ -4,8 +4,6 @@
 import type { CameraImageData, CameraVideoData, CapturedImage, CapturedVideo, PhotoAddedEvent, PhotoRemovedEvent } from '../definitions';
 import { createThumbnailContainer } from '../ui/ui-factory';
 import { openImagePreview, openVideoPreview } from '../ui/media-viewer';
-import { openImageEditor, isEditorActive } from '../ui/image-editor';
-import type { MarkerAreaState } from 'markerjs2';
 
 type CaptureEntry =
   | { type: 'image'; item: CapturedImage }
@@ -24,7 +22,7 @@ export class GalleryController {
   private onPhotoAdded?: (event: PhotoAddedEvent) => void;
   private onPhotoRemoved?: (event: PhotoRemovedEvent) => void;
   private onMediaCountChanged?: (totalCount: number) => void;
-  private editorStates: Map<string, MarkerAreaState> = new Map();
+  private enableEditing: boolean;
 
   constructor(
     galleryElement: HTMLElement,
@@ -32,7 +30,8 @@ export class GalleryController {
     onImageRemoved?: (images: CapturedImage[]) => void,
     onPhotoAdded?: (event: PhotoAddedEvent) => void,
     onPhotoRemoved?: (event: PhotoRemovedEvent) => void,
-    onMediaCountChanged?: (totalCount: number) => void
+    onMediaCountChanged?: (totalCount: number) => void,
+    enableEditing?: boolean,
   ) {
     this.galleryElement = galleryElement;
     this.thumbnailStyle = thumbnailStyle;
@@ -40,6 +39,7 @@ export class GalleryController {
     this.onPhotoAdded = onPhotoAdded;
     this.onPhotoRemoved = onPhotoRemoved;
     this.onMediaCountChanged = onMediaCountChanged;
+    this.enableEditing = enableEditing ?? false;
   }
 
   private notifyMediaCountChanged(): void {
@@ -225,27 +225,27 @@ export class GalleryController {
   /**
    * Opens marker.js editor on the given image and replaces it on save.
    */
-  private handleEditImage(image: CapturedImage): void {
+  private async handleEditImage(image: CapturedImage): Promise<void> {
+    const { openImageEditor, isEditorActive } = await import('../ui/image-editor');
     if (isEditorActive()) return;
 
     const src = image.data.webPath || image.data.uri;
-    const previousState = this.editorStates.get(image.id);
 
-    openImageEditor(src, previousState).then((result) => {
+    try {
+      const result = await openImageEditor(src, image.data.editorState);
       if (!result) return;
 
-      this.editorStates.set(image.id, result.state);
-
-      const updatedData: CameraImageData = {
+      this.updateImage(image.id, {
         ...image.data,
+        sourceUri: image.data.sourceUri ?? image.data.uri,
         uri: result.dataUrl,
         webPath: result.dataUrl,
         thumbnail: result.dataUrl,
-      };
-      this.updateImage(image.id, updatedData);
-    }).catch((err) => {
+        editorState: result.state,
+      });
+    } catch (err) {
       console.error('[CameraMultiCapture] Image editor error:', err);
-    });
+    }
   }
 
   /**
@@ -266,7 +266,7 @@ export class GalleryController {
             onTap: () => openImagePreview(
               src,
               image.data.thumbnail,
-              () => this.handleEditImage(image),
+              this.enableEditing ? () => this.handleEditImage(image) : undefined,
             ),
           }
         );
