@@ -58,7 +58,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var videoCaptureDelegate: VideoCaptureDelegate?
     var pendingVideoStopCall: CAPPluginCall?
     var maxRecordingDurationSeconds: Double = 0
-    private struct CameraStateSnapshot {
+    fileprivate struct CameraStateSnapshot {
         let torchOn: Bool
         let flashMode: AVCaptureDevice.FlashMode
         let zoomFactor: CGFloat
@@ -89,7 +89,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
 
     private var recordingStateSnapshot: CameraStateSnapshot?
 
-    private func restoreCameraState(_ snapshot: CameraStateSnapshot) {
+    fileprivate func restoreCameraState(_ snapshot: CameraStateSnapshot) {
         var mode = currentFlashMode
         snapshot.restore(device: currentInput?.device, currentFlashMode: &mode)
         currentFlashMode = mode
@@ -1257,9 +1257,9 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
     var call: CAPPluginCall
     var resultType: String
     var isFrontCamera: Bool
-    let preCaptureSnapshot: CameraMultiCapturePlugin.CameraStateSnapshot
+    fileprivate let preCaptureSnapshot: CameraMultiCapturePlugin.CameraStateSnapshot
 
-    init(plugin: CameraMultiCapturePlugin, call: CAPPluginCall, resultType: String, isFrontCamera: Bool, preCaptureSnapshot: CameraMultiCapturePlugin.CameraStateSnapshot) {
+    fileprivate init(plugin: CameraMultiCapturePlugin, call: CAPPluginCall, resultType: String, isFrontCamera: Bool, preCaptureSnapshot: CameraMultiCapturePlugin.CameraStateSnapshot) {
         self.plugin = plugin
         self.call = call
         self.resultType = resultType
