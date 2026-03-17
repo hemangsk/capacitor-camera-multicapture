@@ -27,6 +27,7 @@ export class CameraController {
   private torchState: TorchState = TorchState.Off;
   private isRecording = false;
   private currentZoom = 1;
+  private preRecordingState: { flash: 'on' | 'off' | 'auto'; torch: TorchState; zoom: number } | null = null;
   private availableCameras: {
     hasUltrawide: boolean;
     hasWide: boolean;
@@ -88,22 +89,22 @@ export class CameraController {
     }
   }
 
-  /**
-   * Starts video recording.
-   */
   async startVideoRecording(): Promise<void> {
     try {
+      this.preRecordingState = {
+        flash: this.flashMode,
+        torch: this.torchState,
+        zoom: this.currentZoom,
+      };
       await this.plugin.startVideoRecording();
       this.isRecording = true;
     } catch (error) {
+      this.preRecordingState = null;
       console.error('Failed to start video recording', error);
       throw error;
     }
   }
 
-  /**
-   * Stops video recording and returns captured video metadata.
-   */
   async stopVideoRecording(): Promise<CameraVideoData | undefined> {
     try {
       const result = await this.plugin.stopVideoRecording();
@@ -114,11 +115,26 @@ export class CameraController {
       }
 
       result.value.webPath = Capacitor.convertFileSrc(result.value.uri);
+      await this.restorePreRecordingState();
       return result.value;
     } catch (error) {
       this.isRecording = false;
+      await this.restorePreRecordingState();
       console.error('Failed to stop video recording', error);
       throw error;
+    }
+  }
+
+  private async restorePreRecordingState(): Promise<void> {
+    const saved = this.preRecordingState;
+    this.preRecordingState = null;
+    if (!saved) return;
+    try {
+      await this.setFlash(saved.flash);
+      await this.setTorch(saved.torch);
+      await this.setZoom(saved.zoom);
+    } catch (e) {
+      console.warn('Failed to restore pre-recording camera state', e);
     }
   }
 

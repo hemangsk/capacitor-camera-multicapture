@@ -604,6 +604,7 @@ export class OverlayManager {
           totalCount: this.galleryController.getVideos().length,
         });
       }
+      await this.refreshTorchIconFromState();
     } catch (error) {
       this.isRecordingVideo = false;
       this.stopRecordingTimer();
