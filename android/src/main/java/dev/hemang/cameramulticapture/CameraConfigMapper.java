@@ -91,6 +91,8 @@ public class CameraConfigMapper {
 
         config.saveToGallery = data.getBoolean("saveToGallery", true);
         config.galleryAlbumName = data.getString("galleryAlbumName", "Camera");
+        config.maxRecordingDurationSeconds = data.getInteger("maxRecordingDuration", 0);
+
         return config;
     }
 }

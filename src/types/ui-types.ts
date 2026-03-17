@@ -55,6 +55,7 @@ export interface ButtonsConfig {
   switchCamera?: IconButtonConfig;
   zoom?: ZoomButtonConfig;
   flash?: ToggleButtonConfig;
+  torch?: ToggleButtonConfig;
 }
 
 /**
@@ -75,10 +76,12 @@ export interface CameraOverlayUIOptions {
   thumbnailStyle?: ThumbnailStyle;
   quality?: number;
   maxCaptures?: number;
+  maxRecordingDuration?: number;
   flashAutoModeEnabled?: boolean;
   showShotCounter?: boolean;
   pinchToZoom?: {
     enabled?: boolean;
     lockToNearestStep?: boolean;
   };
+  enableEditing?: boolean;
 }
