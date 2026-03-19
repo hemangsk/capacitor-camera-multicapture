@@ -60,6 +60,8 @@ export class CameraController {
         },
         containerId: containerElement.id || 'camera-container',
         maxRecordingDuration: this.options.maxRecordingDuration,
+        saveToGallery: this.options.saveToGallery,
+        galleryAlbumName: this.options.galleryAlbumName,
       };
 
       await this.plugin.start(startOptions);
