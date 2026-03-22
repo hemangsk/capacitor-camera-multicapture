@@ -58,6 +58,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var videoCaptureDelegate: VideoCaptureDelegate?
     var pendingVideoStopCall: CAPPluginCall?
     var maxRecordingDurationSeconds: Double = 0
+    var saveToGallery: Bool = true
+    var galleryAlbumName: String = "Camera"
 
 
 
@@ -153,6 +155,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         self.currentFlashMode = config.flashMode
         self.currentOrientation = config.orientation
         self.maxRecordingDurationSeconds = maxRecordingDuration > 0 ? maxRecordingDuration : 0
+        self.saveToGallery = call.getBool("saveToGallery") ?? true
+        self.galleryAlbumName = call.getString("galleryAlbumName") ?? "Camera"
 
         self.sessionQueue.async {
             do {
@@ -250,7 +254,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             }
         }
         
-        let delegate = PhotoCaptureDelegate(plugin: self, call: call, resultType: resultType, isFrontCamera: cameraPosition == .front)
+        let delegate = PhotoCaptureDelegate(plugin: self, call: call, resultType: resultType, isFrontCamera: cameraPosition == .front, saveToGallery: saveToGallery, galleryAlbumName: galleryAlbumName)
         self.captureDelegate = delegate
 
         photoOutput.capturePhoto(with: settings, delegate: delegate)
@@ -364,7 +368,9 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let thumbnail = generateVideoThumbnail(from: outputURL, size: 200) ?? ""
         let duration = getVideoDuration(from: outputURL)
 
-        saveVideoToGallery(fileURL: outputURL)
+        if saveToGallery {
+            saveVideoToGallery(fileURL: outputURL)
+        }
 
         call.resolve([
             "value": [
@@ -1226,12 +1232,16 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
     var call: CAPPluginCall
     var resultType: String
     var isFrontCamera: Bool
+    var saveToGallery: Bool
+    var galleryAlbumName: String
 
-    init(plugin: CameraMultiCapturePlugin, call: CAPPluginCall, resultType: String, isFrontCamera: Bool) {
+    init(plugin: CameraMultiCapturePlugin, call: CAPPluginCall, resultType: String, isFrontCamera: Bool, saveToGallery: Bool, galleryAlbumName: String) {
         self.plugin = plugin
         self.call = call
         self.resultType = resultType
         self.isFrontCamera = isFrontCamera
+        self.saveToGallery = saveToGallery
+        self.galleryAlbumName = galleryAlbumName
     }
 
     func photoOutput(
@@ -1242,29 +1252,33 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
             call.reject("Photo capture error: \(error.localizedDescription)")
             return
         }
-        
+
         guard let data = photo.fileDataRepresentation() else {
             call.reject("No image data")
             return
         }
-        
+
         DispatchQueue.global(qos: .userInitiated).async {
             let tempDir = FileManager.default.temporaryDirectory
             let fileName = UUID().uuidString + ".jpg"
             let fileURL = tempDir.appendingPathComponent(fileName)
-            
+
             do {
                 try data.write(to: fileURL)
-                
+
+                if self.saveToGallery {
+                    self.saveImageToGallery(fileURL: fileURL)
+                }
+
                 var imageData = [String: String]()
                 imageData["uri"] = fileURL.absoluteString
-                
+
                 if let thumbnailDataUri = self.plugin?.generateThumbnail(from: data, size: 200) {
                     imageData["thumbnail"] = thumbnailDataUri
                 } else {
                     imageData["thumbnail"] = ""
                 }
-                
+
                 DispatchQueue.main.async {
                     self.call.resolve(["value": imageData])
                 }
@@ -1272,6 +1286,16 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
                 DispatchQueue.main.async {
                     self.call.reject("Failed to process image: \(error.localizedDescription)")
                 }
+            }
+        }
+    }
+
+    private func saveImageToGallery(fileURL: URL) {
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetCreationRequest.forAsset().addResource(with: .photo, fileURL: fileURL, options: nil)
+        }) { success, error in
+            if let error = error {
+                print("[CameraMultiCapture] Failed to save photo to gallery: \(error.localizedDescription)")
             }
         }
     }

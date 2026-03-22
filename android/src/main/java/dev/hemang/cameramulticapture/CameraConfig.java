@@ -20,6 +20,8 @@ public class CameraConfig {
     public int previewX;
     public int previewY;
     public int flashMode;
+    public boolean saveToGallery;
+    public String galleryAlbumName;
     public int maxRecordingDurationSeconds;
 
 
@@ -36,6 +38,8 @@ public class CameraConfig {
         this.previewX = 0;
         this.previewY = 0;
         this.flashMode = ImageCapture.FLASH_MODE_OFF;
+        this.saveToGallery = true;
+        this.galleryAlbumName = "Camera";
         this.maxRecordingDurationSeconds = 0;
     }
 }

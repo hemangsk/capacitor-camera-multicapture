@@ -128,6 +128,16 @@ export interface CameraOverlayOptions {
    * @default false
    */
   enableEditing?: boolean;
+  /**
+   * Save captured photos to the device gallery.
+   * @default true
+   */
+  saveToGallery?: boolean;
+  /**
+   * Album name for saved photos.
+   * @default "Camera"
+   */
+  galleryAlbumName?: string;
 }
 
 
