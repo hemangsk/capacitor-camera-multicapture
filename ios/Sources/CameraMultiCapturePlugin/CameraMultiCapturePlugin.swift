@@ -58,7 +58,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var videoCaptureDelegate: VideoCaptureDelegate?
     var pendingVideoStopCall: CAPPluginCall?
     var maxRecordingDurationSeconds: Double = 0
-    var saveToGallery: Bool = true
+    var enableSaving: Bool = false
     var galleryAlbumName: String = "Camera"
 
 
@@ -155,7 +155,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         self.currentFlashMode = config.flashMode
         self.currentOrientation = config.orientation
         self.maxRecordingDurationSeconds = maxRecordingDuration > 0 ? maxRecordingDuration : 0
-        self.saveToGallery = call.getBool("saveToGallery") ?? true
+        self.enableSaving = call.getBool("enableSaving") ?? false
         self.galleryAlbumName = call.getString("galleryAlbumName") ?? "Camera"
 
         self.sessionQueue.async {
@@ -254,7 +254,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             }
         }
         
-        let delegate = PhotoCaptureDelegate(plugin: self, call: call, resultType: resultType, isFrontCamera: cameraPosition == .front, saveToGallery: saveToGallery, galleryAlbumName: galleryAlbumName)
+        let delegate = PhotoCaptureDelegate(plugin: self, call: call, resultType: resultType, isFrontCamera: cameraPosition == .front, enableSaving: enableSaving, galleryAlbumName: galleryAlbumName)
         self.captureDelegate = delegate
 
         photoOutput.capturePhoto(with: settings, delegate: delegate)
@@ -368,7 +368,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let thumbnail = generateVideoThumbnail(from: outputURL, size: 200) ?? ""
         let duration = getVideoDuration(from: outputURL)
 
-        if saveToGallery {
+        if enableSaving {
             saveVideoToGallery(fileURL: outputURL)
         }
 
@@ -1232,15 +1232,15 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
     var call: CAPPluginCall
     var resultType: String
     var isFrontCamera: Bool
-    var saveToGallery: Bool
+    var enableSaving: Bool
     var galleryAlbumName: String
 
-    init(plugin: CameraMultiCapturePlugin, call: CAPPluginCall, resultType: String, isFrontCamera: Bool, saveToGallery: Bool, galleryAlbumName: String) {
+    init(plugin: CameraMultiCapturePlugin, call: CAPPluginCall, resultType: String, isFrontCamera: Bool, enableSaving: Bool, galleryAlbumName: String) {
         self.plugin = plugin
         self.call = call
         self.resultType = resultType
         self.isFrontCamera = isFrontCamera
-        self.saveToGallery = saveToGallery
+        self.enableSaving = enableSaving
         self.galleryAlbumName = galleryAlbumName
     }
 
@@ -1266,7 +1266,7 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
             do {
                 try data.write(to: fileURL)
 
-                if self.saveToGallery {
+                if self.enableSaving {
                     self.saveImageToGallery(fileURL: fileURL)
                 }
 

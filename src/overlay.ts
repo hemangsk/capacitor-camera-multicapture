@@ -37,7 +37,7 @@ export const initialize = (options: CameraOverlayOptions): Promise<CameraOverlay
     showShotCounter: options.showShotCounter ?? true, // Default to true for backward compatibility
     pinchToZoom: options.pinchToZoom,
     enableEditing: options.enableEditing,
-    saveToGallery: options.saveToGallery,
+    enableSaving: options.enableSaving,
     galleryAlbumName: options.galleryAlbumName,
   };
   

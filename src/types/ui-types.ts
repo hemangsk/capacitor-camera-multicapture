@@ -84,6 +84,6 @@ export interface CameraOverlayUIOptions {
     lockToNearestStep?: boolean;
   };
   enableEditing?: boolean;
-  saveToGallery?: boolean;
+  enableSaving?: boolean;
   galleryAlbumName?: string;
 }

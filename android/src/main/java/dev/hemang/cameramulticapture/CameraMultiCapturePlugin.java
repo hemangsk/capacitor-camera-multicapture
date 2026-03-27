@@ -408,8 +408,8 @@ public class CameraMultiCapturePlugin extends Plugin {
                             Uri uri = Uri.fromFile(photoFile);
                             imageData.put("uri", uri.toString());
 
-                            // Save to gallery if enabled (default: true)
-                            if (currentConfig.saveToGallery) {
+                            // Save to gallery if enabled (default: false)
+                            if (currentConfig.enableSaving) {
                                 Uri galleryUri = saveImageToGallery(photoFile, currentConfig.galleryAlbumName);
                                 if (galleryUri != null) {
                                     imageData.put("galleryUri", galleryUri.toString());
@@ -539,7 +539,9 @@ public class CameraMultiCapturePlugin extends Plugin {
             return;
         }
 
-        saveVideoToGallery(outputUri);
+        if (currentConfig.enableSaving) {
+            saveVideoToGallery(outputUri);
+        }
 
         String thumbnail = generateVideoThumbnail(outputUri);
         double duration = getVideoDurationSeconds(outputUri);

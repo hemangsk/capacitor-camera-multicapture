@@ -89,7 +89,7 @@ public class CameraConfigMapper {
             }
         }
 
-        config.saveToGallery = data.getBoolean("saveToGallery", true);
+        config.enableSaving = data.getBoolean("enableSaving", false);
         config.galleryAlbumName = data.getString("galleryAlbumName", "Camera");
         config.maxRecordingDurationSeconds = data.getInteger("maxRecordingDuration", 0);
 
