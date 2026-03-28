@@ -23,6 +23,9 @@ function ensureEditorStyles(): void {
       display: flex;
       align-items: center;
       justify-content: center;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      box-sizing: border-box;
     }
     .cmmc-editor-backdrop img {
       max-width: 100%;
