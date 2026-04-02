@@ -61,6 +61,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var pendingVideoStopCall: CAPPluginCall?
     var motionManager: CMMotionManager?
     var maxRecordingDurationSeconds: Double = 0
+    var isUsingVirtualDevice: Bool = false
 
     @objc func start(_ call: CAPPluginCall) {
         print("Received data from JS: \(call.dictionaryRepresentation)")
@@ -400,26 +401,53 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         session.beginConfiguration()
         session.removeInput(currentInput)
         self.cameraPosition = (self.cameraPosition == .back) ? .front : .back
-        do {
-            if let newDevice = AVCaptureDevice.default(
-                .builtInWideAngleCamera, for: .video, position: self.cameraPosition)
-            {
-                let newInput = try AVCaptureDeviceInput(device: newDevice)
-                if session.canAddInput(newInput) {
-                    session.addInput(newInput)
-                    self.currentInput = newInput
 
-                    call.resolve()
-                } else {
-                    call.reject("Cannot add new camera input")
+        do {
+            // Re-select a virtual device for the back camera to preserve
+            // seamless zoom across all physical lenses
+            var newDevice: AVCaptureDevice? = nil
+            if self.cameraPosition == .back {
+                let virtualDeviceTypes: [AVCaptureDevice.DeviceType] = [
+                    .builtInTripleCamera,
+                    .builtInDualWideCamera,
+                    .builtInDualCamera
+                ]
+                for deviceType in virtualDeviceTypes {
+                    if let device = AVCaptureDevice.default(deviceType, for: .video, position: .back) {
+                        newDevice = device
+                        self.isUsingVirtualDevice = true
+                        break
+                    }
                 }
-            } else {
+            }
+
+            // Fallback to wide-angle (also used for front camera)
+            if newDevice == nil {
+                newDevice = AVCaptureDevice.default(
+                    .builtInWideAngleCamera, for: .video, position: self.cameraPosition)
+                self.isUsingVirtualDevice = false
+            }
+
+            guard let device = newDevice else {
+                session.commitConfiguration()
                 call.reject("Desired camera not available")
+                return
+            }
+
+            let newInput = try AVCaptureDeviceInput(device: device)
+            if session.canAddInput(newInput) {
+                session.addInput(newInput)
+                self.currentInput = newInput
+                session.commitConfiguration()
+                call.resolve()
+            } else {
+                session.commitConfiguration()
+                call.reject("Cannot add new camera input")
             }
         } catch {
+            session.commitConfiguration()
             call.reject("Switch camera error: \(error.localizedDescription)")
         }
-        session.commitConfiguration()
     }
     
     @objc func getAvailableCameras(_ call: CAPPluginCall) {
@@ -427,42 +455,99 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         let hasUltrawide = AVCaptureDevice.default(
             .builtInUltraWideCamera, for: .video, position: cameraPosition
         ) != nil
-        
+
         let hasWide = AVCaptureDevice.default(
             .builtInWideAngleCamera, for: .video, position: cameraPosition
         ) != nil
-        
+
         let hasTelephoto = AVCaptureDevice.default(
             .builtInTelephotoCamera, for: .video, position: cameraPosition
         ) != nil
-        
+
         var result = [String: Any]()
         result["hasUltrawide"] = hasUltrawide
         result["hasWide"] = hasWide
         result["hasTelephoto"] = hasTelephoto
-        
-        // Standard zoom factors for each lens type
-        if hasUltrawide {
-            result["ultrawideZoomFactor"] = 0.5
+
+        // Derive actual zoom factors from the virtual device's switch-over points.
+        // These represent the real optical zoom each physical lens provides,
+        // which varies by device (e.g. 2x on iPhone XS Max, 5x on iPhone 17 Pro).
+        if let device = currentInput?.device,
+           isUsingVirtualDevice {
+            let switchOverFactors = device.virtualDeviceSwitchOverVideoZoomFactors
+            // switchOverFactors contains the zoom values where iOS transitions
+            // to the next physical camera. For a triple camera (UW + W + Tele):
+            //   e.g. [2, 5] means UW→W at 2x, W→Tele at 5x
+            // For a dual camera (W + Tele):
+            //   e.g. [2] or [3] or [5] depending on the telephoto lens
+
+            if hasUltrawide && switchOverFactors.count > 0 {
+                // The min zoom factor on a virtual device with ultrawide is
+                // the ultrawide's native factor (typically ~0.5)
+                result["ultrawideZoomFactor"] = Float(device.minAvailableVideoZoomFactor)
+            } else if hasUltrawide {
+                result["ultrawideZoomFactor"] = 0.5
+            }
+
+            result["wideZoomFactor"] = 1.0
+
+            if hasTelephoto && switchOverFactors.count > 0 {
+                // The last switch-over point is the telephoto's native zoom factor
+                let telephotoFactor = switchOverFactors.last!.floatValue
+                result["telephotoZoomFactor"] = telephotoFactor
+            } else if hasTelephoto {
+                result["telephotoZoomFactor"] = 2.0
+            }
+
+            // Expose all switch-over points so the JS layer can build accurate zoom steps
+            result["switchOverZoomFactors"] = switchOverFactors.map { $0.floatValue }
+        } else {
+            // Fallback for non-virtual device sessions
+            if hasUltrawide {
+                result["ultrawideZoomFactor"] = 0.5
+            }
+            result["wideZoomFactor"] = 1.0
+            if hasTelephoto {
+                result["telephotoZoomFactor"] = 2.0
+            }
         }
-        result["wideZoomFactor"] = 1.0
-        if hasTelephoto {
-            // Telephoto zoom factor varies by device (2x, 2.5x, 3x, etc.)
-            // We'll use 2.0 as default but this should be device-specific
-            result["telephotoZoomFactor"] = 2.0
-        }
-        
+
         call.resolve(result)
     }
     
     @objc func switchToPhysicalCamera(_ call: CAPPluginCall) {
-        guard let session = captureSession,
+        guard let input = currentInput,
               let zoomFactor = call.getFloat("zoomFactor") else {
             call.reject("Camera not initialized or missing zoomFactor parameter")
             return
         }
-        
-        // Determine which camera to use based on zoom factor
+
+        // When using a virtual device, simply set the zoom factor.
+        // iOS automatically activates the correct physical camera at the right
+        // switch-over points. No need to swap device inputs.
+        if isUsingVirtualDevice {
+            do {
+                let device = input.device
+                try device.lockForConfiguration()
+                let clampedZoom = max(
+                    device.minAvailableVideoZoomFactor,
+                    min(CGFloat(zoomFactor), device.activeFormat.videoMaxZoomFactor)
+                )
+                device.videoZoomFactor = clampedZoom
+                device.unlockForConfiguration()
+                call.resolve(["zoom": Float(clampedZoom)])
+            } catch {
+                call.reject("Failed to set zoom: \(error.localizedDescription)")
+            }
+            return
+        }
+
+        // Fallback: manually switch physical cameras for non-virtual device sessions
+        guard let session = captureSession else {
+            call.reject("Camera session not available")
+            return
+        }
+
         let deviceType: AVCaptureDevice.DeviceType
         if zoomFactor < 1.0 {
             deviceType = .builtInUltraWideCamera
@@ -471,12 +556,10 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         } else {
             deviceType = .builtInWideAngleCamera
         }
-        
-        // Try to get the requested camera
+
         guard let newDevice = AVCaptureDevice.default(
             deviceType, for: .video, position: cameraPosition
         ) else {
-            // Fallback to wide angle if requested camera not available
             guard let fallbackDevice = AVCaptureDevice.default(
                 .builtInWideAngleCamera, for: .video, position: cameraPosition
             ) else {
@@ -486,29 +569,23 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             switchToDevice(fallbackDevice, in: session, call: call)
             return
         }
-        
+
         switchToDevice(newDevice, in: session, call: call)
     }
-    
+
     private func switchToDevice(_ device: AVCaptureDevice, in session: AVCaptureSession, call: CAPPluginCall) {
         session.beginConfiguration()
-        
+
         // Remove current input
         if let currentInput = currentInput {
             session.removeInput(currentInput)
         }
-        
+
         do {
-            // Add new input
             let newInput = try AVCaptureDeviceInput(device: device)
             if session.canAddInput(newInput) {
                 session.addInput(newInput)
                 self.currentInput = newInput
-                
-                // Reset zoom to 1.0 for the new camera
-                try device.lockForConfiguration()
-                device.videoZoomFactor = 1.0
-                device.unlockForConfiguration()
 
                 session.commitConfiguration()
                 call.resolve()
@@ -570,10 +647,30 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         session.beginConfiguration()
         session.sessionPreset = config.quality
 
-        guard
-            let camera = AVCaptureDevice.default(
-                .builtInWideAngleCamera, for: .video, position: config.cameraPosition)
-        else {
+        // Prefer virtual multi-camera device for seamless zoom across all lenses.
+        // Virtual devices expose a single continuous zoom scale where iOS
+        // automatically switches physical cameras at the correct switch-over points.
+        let camera: AVCaptureDevice
+        let virtualDeviceTypes: [AVCaptureDevice.DeviceType] = [
+            .builtInTripleCamera,
+            .builtInDualWideCamera,
+            .builtInDualCamera
+        ]
+        var foundVirtualDevice: AVCaptureDevice? = nil
+        for deviceType in virtualDeviceTypes {
+            if let device = AVCaptureDevice.default(deviceType, for: .video, position: config.cameraPosition) {
+                foundVirtualDevice = device
+                break
+            }
+        }
+        if let virtualDevice = foundVirtualDevice {
+            camera = virtualDevice
+            self.isUsingVirtualDevice = true
+        } else if let wideCamera = AVCaptureDevice.default(
+            .builtInWideAngleCamera, for: .video, position: config.cameraPosition) {
+            camera = wideCamera
+            self.isUsingVirtualDevice = false
+        } else {
             throw NSError(
                 domain: "Camera", code: 0,
                 userInfo: [NSLocalizedDescriptionKey: "Camera not available"])
