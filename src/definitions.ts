@@ -192,6 +192,7 @@ export interface CapturedVideo {
  * Event data for photo added event
  */
 export interface PhotoAddedEvent {
+  imageId: string;
   image: CameraImageData;
   totalCount: number;
 }
@@ -200,6 +201,7 @@ export interface PhotoAddedEvent {
  * Event data for photo updated event (e.g. after annotation)
  */
 export interface PhotoUpdatedEvent {
+  imageId: string;
   image: CameraImageData;
   totalCount: number;
 }
