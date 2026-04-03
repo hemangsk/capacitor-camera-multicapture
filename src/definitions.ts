@@ -290,6 +290,7 @@ export interface CameraMultiCapturePlugin {
     ultrawideZoomFactor?: number;
     wideZoomFactor: number;
     telephotoZoomFactor?: number;
+    switchOverZoomFactors?: number[];
   }>;
 
   /**

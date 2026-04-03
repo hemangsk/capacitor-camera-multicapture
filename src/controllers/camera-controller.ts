@@ -177,6 +177,7 @@ export class CameraController {
     ultrawideZoomFactor?: number;
     wideZoomFactor: number;
     telephotoZoomFactor?: number;
+    switchOverZoomFactors?: number[];
   }> {
     try {
       if (!this.availableCameras) {
@@ -222,6 +223,7 @@ export class CameraController {
   async switchCamera(): Promise<void> {
     try {
       await this.plugin.switchCamera();
+      // Invalidate cached camera info since capabilities differ per camera position
       this.availableCameras = null;
     } catch (error) {
       console.error('Failed to switch camera', error);
@@ -375,37 +377,34 @@ export class CameraController {
   async getSmartZoomLevels(): Promise<{ level: number; isPhysicalCamera: boolean }[]> {
     const cameras = await this.getAvailableCameras();
     const zoomLevels: { level: number; isPhysicalCamera: boolean }[] = [];
-    
+
     // Add ultrawide if available
     if (cameras.hasUltrawide && cameras.ultrawideZoomFactor) {
       zoomLevels.push({ level: cameras.ultrawideZoomFactor, isPhysicalCamera: true });
     }
-    
+
     // Always add wide (1x)
     zoomLevels.push({ level: cameras.wideZoomFactor, isPhysicalCamera: true });
-    
-    // Add telephoto if available
+
+    // Add telephoto at its real zoom factor (derived from virtual device switch-over points)
     if (cameras.hasTelephoto && cameras.telephotoZoomFactor) {
       zoomLevels.push({ level: cameras.telephotoZoomFactor, isPhysicalCamera: true });
     }
-    
-    // Add digital zoom levels
-    const digitalZoomLevels = [3, 5, 10];
+
+    // Add intermediate and extended digital zoom levels
+    const digitalZoomLevels = [2, 3, 5, 10];
+    const zoomInfo = await this.getAvailableZoomLevels();
     for (const level of digitalZoomLevels) {
-      // Only add if it's not already covered by a physical camera
-      const isPhysicalCamera = zoomLevels.some(z => z.isPhysicalCamera && Math.abs(z.level - level) < 0.1);
-      if (!isPhysicalCamera && level > cameras.wideZoomFactor) {
-        // Only add if within device capabilities
-        const zoomInfo = await this.getAvailableZoomLevels();
-        if (level <= zoomInfo.maxZoom) {
-          zoomLevels.push({ level, isPhysicalCamera: false });
-        }
+      // Only add if not already covered by a physical camera and within device capabilities
+      const alreadyCovered = zoomLevels.some(z => Math.abs(z.level - level) < 0.1);
+      if (!alreadyCovered && level > cameras.wideZoomFactor && level <= zoomInfo.maxZoom) {
+        zoomLevels.push({ level, isPhysicalCamera: false });
       }
     }
-    
+
     // Sort by zoom level
     zoomLevels.sort((a, b) => a.level - b.level);
-    
+
     return zoomLevels;
   }
 
