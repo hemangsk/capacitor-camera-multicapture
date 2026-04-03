@@ -195,6 +195,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             self.movieOutput = nil
             self.videoCaptureDelegate = nil
             self.pendingVideoStopCall = nil
+            self.isUsingVirtualDevice = false
             call.resolve()
         }
     }
@@ -586,9 +587,6 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             } else if hasTelephoto {
                 result["telephotoZoomFactor"] = 2.0
             }
-
-            // Expose all switch-over points so the JS layer can build accurate zoom steps
-            result["switchOverZoomFactors"] = switchOverFactors.map { $0.floatValue }
         } else {
             // Fallback for non-virtual device sessions
             if hasUltrawide {

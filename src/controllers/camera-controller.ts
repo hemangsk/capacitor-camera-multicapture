@@ -177,7 +177,6 @@ export class CameraController {
     ultrawideZoomFactor?: number;
     wideZoomFactor: number;
     telephotoZoomFactor?: number;
-    switchOverZoomFactors?: number[];
   }> {
     try {
       if (!this.availableCameras) {

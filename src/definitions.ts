@@ -197,6 +197,14 @@ export interface PhotoAddedEvent {
 }
 
 /**
+ * Event data for photo updated event (e.g. after annotation)
+ */
+export interface PhotoUpdatedEvent {
+  image: CameraImageData;
+  totalCount: number;
+}
+
+/**
  * Event data for photo removed event
  */
 export interface PhotoRemovedEvent {
@@ -290,7 +298,6 @@ export interface CameraMultiCapturePlugin {
     ultrawideZoomFactor?: number;
     wideZoomFactor: number;
     telephotoZoomFactor?: number;
-    switchOverZoomFactors?: number[];
   }>;
 
   /**
