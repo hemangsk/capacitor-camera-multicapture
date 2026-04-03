@@ -1,7 +1,7 @@
 /**
  * Controller for gallery operations and captured images
  */
-import type { CameraImageData, CameraVideoData, CapturedImage, CapturedVideo, PhotoAddedEvent, PhotoRemovedEvent } from '../definitions';
+import type { CameraImageData, CameraVideoData, CapturedImage, CapturedVideo, PhotoAddedEvent, PhotoUpdatedEvent, PhotoRemovedEvent } from '../definitions';
 import { createThumbnailContainer } from '../ui/ui-factory';
 import { openImagePreview, openVideoPreview } from '../ui/media-viewer';
 
@@ -20,6 +20,7 @@ export class GalleryController {
   private thumbnailStyle: { width?: string; height?: string };
   private onImageRemoved: (images: CapturedImage[]) => void;
   private onPhotoAdded?: (event: PhotoAddedEvent) => void;
+  private onPhotoUpdated?: (event: PhotoUpdatedEvent) => void;
   private onPhotoRemoved?: (event: PhotoRemovedEvent) => void;
   private onMediaCountChanged?: (totalCount: number) => void;
   private enableEditing: boolean;
@@ -29,6 +30,7 @@ export class GalleryController {
     thumbnailStyle: { width?: string; height?: string } = { width: '80px' },
     onImageRemoved?: (images: CapturedImage[]) => void,
     onPhotoAdded?: (event: PhotoAddedEvent) => void,
+    onPhotoUpdated?: (event: PhotoUpdatedEvent) => void,
     onPhotoRemoved?: (event: PhotoRemovedEvent) => void,
     onMediaCountChanged?: (totalCount: number) => void,
     enableEditing?: boolean,
@@ -37,6 +39,7 @@ export class GalleryController {
     this.thumbnailStyle = thumbnailStyle;
     this.onImageRemoved = onImageRemoved || (() => { });
     this.onPhotoAdded = onPhotoAdded;
+    this.onPhotoUpdated = onPhotoUpdated;
     this.onPhotoRemoved = onPhotoRemoved;
     this.onMediaCountChanged = onMediaCountChanged;
     this.enableEditing = enableEditing ?? false;
@@ -235,13 +238,18 @@ export class GalleryController {
       const result = await openImageEditor(src, image.data.editorState);
       if (!result) return;
 
-      this.updateImage(image.id, {
+      const updatedData: CameraImageData = {
         ...image.data,
         sourceUri: image.data.sourceUri ?? image.data.uri,
         uri: result.dataUrl,
         webPath: result.dataUrl,
         thumbnail: result.dataUrl,
         editorState: result.state,
+      };
+      this.updateImage(image.id, updatedData);
+      this.onPhotoUpdated?.({
+        image: updatedData,
+        totalCount: this.images.length,
       });
     } catch (err) {
       console.error('[CameraMultiCapture] Image editor error:', err);

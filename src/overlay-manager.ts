@@ -6,6 +6,7 @@ import type {
   CameraMultiCapturePlugin,
   CameraOverlayResult,
   PhotoAddedEvent,
+  PhotoUpdatedEvent,
   PhotoRemovedEvent,
   VideoRecordingStartedEvent,
   VideoRecordingStoppedEvent,
@@ -69,6 +70,18 @@ export class OverlayManager {
       window.dispatchEvent(event);
     } catch (error) {
       console.error('[CameraMultiCapture] Failed to emit photoAdded event:', error);
+    }
+  }
+
+  /**
+   * Emits photoUpdated event using pure JavaScript events
+   */
+  private emitPhotoUpdatedEvent(eventData: PhotoUpdatedEvent): void {
+    try {
+      const event = new CustomEvent('photoUpdated', { detail: eventData });
+      window.dispatchEvent(event);
+    } catch (error) {
+      console.error('[CameraMultiCapture] Failed to emit photoUpdated event:', error);
     }
   }
 
@@ -193,6 +206,9 @@ export class OverlayManager {
       undefined,
       (eventData: PhotoAddedEvent) => {
         this.emitPhotoAddedEvent(eventData);
+      },
+      (eventData: PhotoUpdatedEvent) => {
+        this.emitPhotoUpdatedEvent(eventData);
       },
       (eventData: PhotoRemovedEvent) => {
         this.emitPhotoRemovedEvent(eventData);
