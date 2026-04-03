@@ -1,14 +1,14 @@
 /**
  * Overlay Manager - Main controller for camera overlay UI
  */
-import {
-  TorchState,
-  type CameraMultiCapturePlugin,
-  type CameraOverlayResult,
-  type PhotoAddedEvent,
-  type PhotoRemovedEvent,
-  type VideoRecordingStartedEvent,
-  type VideoRecordingStoppedEvent,
+import { TorchState } from './definitions';
+import type {
+  CameraMultiCapturePlugin,
+  CameraOverlayResult,
+  PhotoAddedEvent,
+  PhotoRemovedEvent,
+  VideoRecordingStartedEvent,
+  VideoRecordingStoppedEvent,
 } from './definitions';
 import { CameraController } from './controllers/camera-controller';
 import { GalleryController } from './controllers/gallery-controller';
