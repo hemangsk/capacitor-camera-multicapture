@@ -1,6 +1,8 @@
 /**
  * Controller for gallery operations and captured images
  */
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import type { CameraImageData, CameraVideoData, CapturedImage, CapturedVideo, PhotoAddedEvent, PhotoUpdatedEvent, PhotoRemovedEvent } from '../definitions';
 import { createThumbnailContainer } from '../ui/ui-factory';
 import { openImagePreview, openVideoPreview } from '../ui/media-viewer';
@@ -65,6 +67,7 @@ export class GalleryController {
 
     // Trigger photoAdded callback with detailed logging
     const eventData: PhotoAddedEvent = {
+      imageId: id,
       image: imageData,
       totalCount: this.images.length
     };
@@ -238,16 +241,28 @@ export class GalleryController {
       const result = await openImageEditor(src, image.data.editorState);
       if (!result) return;
 
+      // Write annotated image to disk so uri is a native file path
+      const fileName = `annotated_${Date.now()}.jpg`;
+      const base64Data = result.dataUrl.split(',')[1];
+      const savedFile = await Filesystem.writeFile({
+        path: fileName,
+        data: base64Data,
+        directory: Directory.Cache,
+      });
+      const fileUri = savedFile.uri;
+      const webPath = Capacitor.convertFileSrc(fileUri);
+
       const updatedData: CameraImageData = {
         ...image.data,
         sourceUri: image.data.sourceUri ?? image.data.uri,
-        uri: result.dataUrl,
-        webPath: result.dataUrl,
+        uri: fileUri,
+        webPath,
         thumbnail: result.dataUrl,
         editorState: result.state,
       };
       this.updateImage(image.id, updatedData);
       this.onPhotoUpdated?.({
+        imageId: image.id,
         image: updatedData,
         totalCount: this.images.length,
       });
