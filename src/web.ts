@@ -1,5 +1,6 @@
 import { WebPlugin } from '@capacitor/core';
 import type { CameraImageData, CameraMultiCapturePlugin, CameraOverlayOptions, CameraOverlayResult, CameraPreviewRect, CameraVideoData, PermissionStatus } from './definitions';
+import { PLUGIN_VERSION } from './version';
 
 export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCapturePlugin {
   async capture(): Promise<{ value: CameraImageData }> {
@@ -153,12 +154,16 @@ export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCaptu
     return { jobId: 'web-not-supported' };
   }
 
-  async getUploadStatus(_options: { jobId: string }): Promise<{ 
+  async getUploadStatus(_options: { jobId: string }): Promise<{
     status: 'pending' | 'uploading' | 'completed' | 'failed';
     error?: string;
   }> {
     console.warn('[CameraMultiCapture] getUploadStatus() not available on web.');
     return { status: 'failed', error: 'Web platform not supported' };
+  }
+
+  async getVersion(): Promise<{ version: string }> {
+    return { version: PLUGIN_VERSION };
   }
 }
 
