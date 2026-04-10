@@ -42,6 +42,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "queueBackgroundUpload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getUploadStatus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getVersion", returnType: CAPPluginReturnPromise),
     ]
 
     var captureSession: AVCaptureSession?
@@ -1109,7 +1110,11 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve(["status": "failed", "error": "Job not found"])
         }
     }
-    
+
+    @objc func getVersion(_ call: CAPPluginCall) {
+        call.resolve(["version": pluginVersion])
+    }
+
     private func performHttpUpload(jobId: String, uploadJob: [String: Any]) {
         guard let imageUri = uploadJob["imageUri"] as? String,
               let uploadEndpoint = uploadJob["uploadEndpoint"] as? String,

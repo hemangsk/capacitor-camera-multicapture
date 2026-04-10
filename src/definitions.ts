@@ -360,8 +360,13 @@ export interface CameraMultiCapturePlugin {
   /**
    * Check upload job status
    */
-  getUploadStatus(options: { jobId: string }): Promise<{ 
+  getUploadStatus(options: { jobId: string }): Promise<{
     status: 'pending' | 'uploading' | 'completed' | 'failed';
     error?: string;
   }>;
+
+  /**
+   * Returns the current plugin version string.
+   */
+  getVersion(): Promise<{ version: string }>;
 }

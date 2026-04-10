@@ -835,7 +835,14 @@ public class CameraMultiCapturePlugin extends Plugin {
             call.reject("Failed to get upload status: " + e.getMessage());
         }
     }
-    
+
+    @PluginMethod
+    public void getVersion(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("version", PluginVersion.VERSION);
+        call.resolve(result);
+    }
+
     private String generateUniqueFileName(String imageUri) {
         try {
             Uri uri = Uri.parse(imageUri);
