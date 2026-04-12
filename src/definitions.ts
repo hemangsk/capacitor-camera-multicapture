@@ -215,6 +215,23 @@ export interface PhotoRemovedEvent {
 }
 
 /**
+ * Event data for video added to gallery event
+ */
+export interface VideoAddedEvent {
+  videoId: string;
+  video: CameraVideoData;
+  totalCount: number;
+}
+
+/**
+ * Event data for video removed from gallery event
+ */
+export interface VideoRemovedEvent {
+  videoId: string;
+  totalCount: number;
+}
+
+/**
  * Event data for video recording started event
  */
 export interface VideoRecordingStartedEvent {

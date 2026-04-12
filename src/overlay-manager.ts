@@ -8,6 +8,8 @@ import type {
   PhotoAddedEvent,
   PhotoUpdatedEvent,
   PhotoRemovedEvent,
+  VideoAddedEvent,
+  VideoRemovedEvent,
   VideoRecordingStartedEvent,
   VideoRecordingStoppedEvent,
 } from './definitions';
@@ -122,6 +124,30 @@ export class OverlayManager {
   }
 
   /**
+   * Emits videoAdded event using pure JavaScript events.
+   */
+  private emitVideoAddedEvent(eventData: VideoAddedEvent): void {
+    try {
+      const event = new CustomEvent('videoAdded', { detail: eventData });
+      window.dispatchEvent(event);
+    } catch (error) {
+      console.error('[CameraMultiCapture] Failed to emit videoAdded event:', error);
+    }
+  }
+
+  /**
+   * Emits videoRemoved event using pure JavaScript events.
+   */
+  private emitVideoRemovedEvent(eventData: VideoRemovedEvent): void {
+    try {
+      const event = new CustomEvent('videoRemoved', { detail: eventData });
+      window.dispatchEvent(event);
+    } catch (error) {
+      console.error('[CameraMultiCapture] Failed to emit videoRemoved event:', error);
+    }
+  }
+
+  /**
    * Shows the camera overlay and returns captured images
    */
   async setup(): Promise<CameraOverlayResult> {
@@ -212,6 +238,12 @@ export class OverlayManager {
       },
       (eventData: PhotoRemovedEvent) => {
         this.emitPhotoRemovedEvent(eventData);
+      },
+      (eventData: VideoAddedEvent) => {
+        this.emitVideoAddedEvent(eventData);
+      },
+      (eventData: VideoRemovedEvent) => {
+        this.emitVideoRemovedEvent(eventData);
       },
       (totalCount: number) => {
         if (this.options.showShotCounter) {
