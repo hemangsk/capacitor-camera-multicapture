@@ -3,7 +3,7 @@
  */
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
-import type { CameraImageData, CameraVideoData, CapturedImage, CapturedVideo, PhotoAddedEvent, PhotoUpdatedEvent, PhotoRemovedEvent } from '../definitions';
+import type { CameraImageData, CameraVideoData, CapturedImage, CapturedVideo, PhotoAddedEvent, PhotoUpdatedEvent, PhotoRemovedEvent, VideoAddedEvent, VideoRemovedEvent } from '../definitions';
 import { createThumbnailContainer } from '../ui/ui-factory';
 import { openImagePreview, openVideoPreview } from '../ui/media-viewer';
 
@@ -24,6 +24,8 @@ export class GalleryController {
   private onPhotoAdded?: (event: PhotoAddedEvent) => void;
   private onPhotoUpdated?: (event: PhotoUpdatedEvent) => void;
   private onPhotoRemoved?: (event: PhotoRemovedEvent) => void;
+  private onVideoAdded?: (event: VideoAddedEvent) => void;
+  private onVideoRemoved?: (event: VideoRemovedEvent) => void;
   private onMediaCountChanged?: (totalCount: number) => void;
   private enableEditing: boolean;
 
@@ -34,6 +36,8 @@ export class GalleryController {
     onPhotoAdded?: (event: PhotoAddedEvent) => void,
     onPhotoUpdated?: (event: PhotoUpdatedEvent) => void,
     onPhotoRemoved?: (event: PhotoRemovedEvent) => void,
+    onVideoAdded?: (event: VideoAddedEvent) => void,
+    onVideoRemoved?: (event: VideoRemovedEvent) => void,
     onMediaCountChanged?: (totalCount: number) => void,
     enableEditing?: boolean,
   ) {
@@ -43,6 +47,8 @@ export class GalleryController {
     this.onPhotoAdded = onPhotoAdded;
     this.onPhotoUpdated = onPhotoUpdated;
     this.onPhotoRemoved = onPhotoRemoved;
+    this.onVideoAdded = onVideoAdded;
+    this.onVideoRemoved = onVideoRemoved;
     this.onMediaCountChanged = onMediaCountChanged;
     this.enableEditing = enableEditing ?? false;
   }
@@ -141,26 +147,77 @@ export class GalleryController {
     this.renderGallery();
     this.scrollToLatest();
     this.notifyMediaCountChanged();
+
+    // Trigger videoAdded callback
+    const eventData: VideoAddedEvent = {
+      videoId: id,
+      video: videoData,
+      totalCount: this.videos.length
+    };
+
+    console.log('[CameraMultiCapture] Video added to gallery:', {
+      videoId: id,
+      totalCount: this.videos.length,
+      videoUri: videoData.uri,
+      timestamp: new Date().toISOString()
+    });
+
+    if (this.onVideoAdded) {
+      try {
+        this.onVideoAdded(eventData);
+        console.log('[CameraMultiCapture] videoAdded callback executed successfully');
+      } catch (error) {
+        console.error('[CameraMultiCapture] Failed to execute videoAdded callback:', error);
+      }
+    } else {
+      console.log('[CameraMultiCapture] No videoAdded callback registered');
+    }
   }
 
   /**
    * Removes a video from the gallery
    */
   removeVideo(videoId: string): void {
+    const videoToRemove = this.videos.find(vid => vid.id === videoId);
     this.videos = this.videos.filter(vid => vid.id !== videoId);
     this.captureOrder = this.captureOrder.filter(
       entry => !(entry.type === 'video' && entry.item.id === videoId)
     );
     this.renderGallery();
     this.notifyMediaCountChanged();
+
+    // Trigger videoRemoved callback
+    const eventData: VideoRemovedEvent = {
+      videoId,
+      totalCount: this.videos.length
+    };
+
+    console.log('[CameraMultiCapture] Video removed from gallery:', {
+      removedVideoId: videoId,
+      remainingCount: this.videos.length,
+      removedVideoUri: videoToRemove?.data.uri || 'unknown',
+      timestamp: new Date().toISOString()
+    });
+
+    if (this.onVideoRemoved) {
+      try {
+        this.onVideoRemoved(eventData);
+        console.log('[CameraMultiCapture] videoRemoved callback executed successfully');
+      } catch (error) {
+        console.error('[CameraMultiCapture] Failed to execute videoRemoved callback:', error);
+      }
+    } else {
+      console.log('[CameraMultiCapture] No videoRemoved callback registered');
+    }
   }
 
   /**
    * Clears all images from the gallery
    */
   clearGallery(): void {
-    // Store images to remove before clearing
+    // Store items to remove before clearing
     const imagesToRemove = [...this.images];
+    const videosToRemove = [...this.videos];
     this.images = [];
     this.videos = [];
     this.captureOrder = [];
@@ -193,6 +250,31 @@ export class GalleryController {
       });
     } else {
       console.log('[CameraMultiCapture] No photoRemoved callback registered for gallery clear');
+    }
+
+    // Trigger videoRemoved callbacks for each cleared video
+    if (this.onVideoRemoved) {
+      videosToRemove.forEach((video, index) => {
+        const eventData: VideoRemovedEvent = {
+          videoId: video.id,
+          totalCount: 0 // All videos are being cleared
+        };
+
+        console.log(`[CameraMultiCapture] Triggering videoRemoved callback ${index + 1}/${videosToRemove.length}:`, {
+          removedVideoId: video.id,
+          videoUri: video.data.uri,
+          timestamp: new Date().toISOString()
+        });
+
+        try {
+          this.onVideoRemoved!(eventData);
+          console.log(`[CameraMultiCapture] videoRemoved callback ${index + 1} executed successfully`);
+        } catch (error) {
+          console.error(`[CameraMultiCapture] Failed to execute videoRemoved callback ${index + 1}:`, error);
+        }
+      });
+    } else {
+      console.log('[CameraMultiCapture] No videoRemoved callback registered for gallery clear');
     }
   }
 
