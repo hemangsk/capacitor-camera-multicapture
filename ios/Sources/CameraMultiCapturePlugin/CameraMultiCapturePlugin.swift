@@ -669,9 +669,9 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         let deviceType: AVCaptureDevice.DeviceType
-        if zoomFactor < 1.0 {
+        if userZoomFactor < 1.0 {
             deviceType = .builtInUltraWideCamera
-        } else if zoomFactor >= 2.0 {
+        } else if userZoomFactor >= 2.0 {
             deviceType = .builtInTelephotoCamera
         } else {
             deviceType = .builtInWideAngleCamera
