@@ -573,8 +573,14 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
 
             if hasUltrawide && switchOverFactors.count > 0 {
                 // The min zoom factor on a virtual device with ultrawide is
-                // the ultrawide's native factor (typically ~0.5)
-                result["ultrawideZoomFactor"] = Float(device.minAvailableVideoZoomFactor)
+                // the ultrawide's native factor (typically ~0.5).
+                // Some session presets/formats constrain minZoom to 1.0 even
+                // on triple-camera devices — in that case the ultrawide range
+                // isn't available so we omit the button entirely.
+                let minZoom = Float(device.minAvailableVideoZoomFactor)
+                if minZoom < 1.0 {
+                    result["ultrawideZoomFactor"] = minZoom
+                }
             } else if hasUltrawide {
                 result["ultrawideZoomFactor"] = 0.5
             }
