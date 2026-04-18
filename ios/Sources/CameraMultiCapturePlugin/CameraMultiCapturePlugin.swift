@@ -62,6 +62,13 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var enableSaving: Bool = false
     var galleryAlbumName: String = "Camera"
     var isUsingVirtualDevice: Bool = false
+    // Divisor to convert between API zoom factors and user-facing values.
+    // On triple-camera virtual devices (e.g. iPhone 15 Pro), the API scale
+    // starts at 1.0 for ultrawide, with switchover at [2, 6]. The first
+    // switchover factor (2) represents "1x" (wide), so we divide API values
+    // by 2 to get user-facing labels: 0.5x, 1x, 3x.
+    // On devices without ultrawide, this stays 1.0 (no conversion needed).
+    var zoomScaleDivisor: CGFloat = 1.0
 
 
 
@@ -399,7 +406,9 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("Camera not initialized")
             return
         }
-        let zoomFactor = CGFloat(call.getFloat("zoom") ?? 1.0)
+        let userZoom = CGFloat(call.getFloat("zoom") ?? 1.0)
+        // Convert user-facing zoom value back to API scale
+        let zoomFactor = userZoom * zoomScaleDivisor
         do {
             try input.device.lockForConfiguration()
             // Clamp zoom factor to valid range
@@ -407,7 +416,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             let maxZoom = input.device.activeFormat.videoMaxZoomFactor
             input.device.videoZoomFactor = max(minZoom, min(zoomFactor, maxZoom))
             input.device.unlockForConfiguration()
-            call.resolve(["zoom": input.device.videoZoomFactor])
+            // Return the user-facing zoom value
+            call.resolve(["zoom": Float(input.device.videoZoomFactor / zoomScaleDivisor)])
         } catch {
             call.reject("Failed to set zoom: \(error.localizedDescription)")
         }
@@ -420,28 +430,30 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         }
         
         let device = input.device
-        let minZoom = device.minAvailableVideoZoomFactor
-        let maxZoom = device.activeFormat.videoMaxZoomFactor
-        
+        // Convert API zoom range to user-facing values
+        let minZoom = device.minAvailableVideoZoomFactor / zoomScaleDivisor
+        let maxZoom = device.activeFormat.videoMaxZoomFactor / zoomScaleDivisor
+
         // Generate suggested preset levels based on device capabilities
         var presetLevels: [Float] = []
-        
+
         // Add ultra-wide if available (0.5x or 0.7x depending on device)
-        if minZoom < 1.0 {
+        let userMin = Float(minZoom)
+        if userMin < 1.0 {
             let ultraWide: Float
-            if minZoom > 0.6 && minZoom < 0.8 {
+            if userMin > 0.6 && userMin < 0.8 {
                 ultraWide = 0.7
-            } else if minZoom < 0.6 {
+            } else if userMin < 0.6 {
                 ultraWide = 0.5
             } else {
-                ultraWide = Float(minZoom)
+                ultraWide = userMin
             }
             presetLevels.append(ultraWide)
         }
-        
+
         // Always add 1x
         presetLevels.append(1.0)
-        
+
         // Add telephoto presets based on max zoom
         if maxZoom >= 2.0 {
             presetLevels.append(2.0)
@@ -455,7 +467,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         if maxZoom >= 10.0 {
             presetLevels.append(10.0)
         }
-        
+
         call.resolve([
             "minZoom": Float(minZoom),
             "maxZoom": Float(maxZoom),
@@ -506,6 +518,13 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                     if let device = AVCaptureDevice.default(deviceType, for: .video, position: .back) {
                         newDevice = device
                         self.isUsingVirtualDevice = true
+                        // Recompute zoom scale divisor for the new device
+                        let switchOvers = device.virtualDeviceSwitchOverVideoZoomFactors
+                        if switchOvers.count > 0 && device.minAvailableVideoZoomFactor >= 1.0 {
+                            self.zoomScaleDivisor = CGFloat(switchOvers[0].floatValue)
+                        } else {
+                            self.zoomScaleDivisor = 1.0
+                        }
                         break
                     }
                 }
@@ -516,6 +535,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
                 newDevice = AVCaptureDevice.default(
                     .builtInWideAngleCamera, for: .video, position: self.cameraPosition)
                 self.isUsingVirtualDevice = false
+                self.zoomScaleDivisor = 1.0
             }
 
             guard let device = newDevice else {
@@ -559,42 +579,41 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         result["hasWide"] = hasWide
         result["hasTelephoto"] = hasTelephoto
 
-        // Derive actual zoom factors from the virtual device's switch-over points.
-        // These represent the real optical zoom each physical lens provides,
-        // which varies by device (e.g. 2x on iPhone XS Max, 5x on iPhone 17 Pro).
+        // Derive user-facing zoom factors from the virtual device's switch-over points.
+        // On triple-camera devices (e.g. iPhone 15 Pro), the API zoom scale is:
+        //   1.0 = ultrawide, switchOverFactors = [2, 6]
+        //   meaning UW→W at API 2.0, W→Tele at API 6.0
+        // Apple's Camera app normalizes by dividing by the first switchover
+        // so users see 0.5x, 1x, 3x. We do the same.
         if let device = currentInput?.device,
            isUsingVirtualDevice {
             let switchOverFactors = device.virtualDeviceSwitchOverVideoZoomFactors
-            // switchOverFactors contains the zoom values where iOS transitions
-            // to the next physical camera. For a triple camera (UW + W + Tele):
-            //   e.g. [2, 5] means UW→W at 2x, W→Tele at 5x
-            // For a dual camera (W + Tele):
-            //   e.g. [2] or [3] or [5] depending on the telephoto lens
 
+            // The first switchover factor is the API zoom value for the wide lens ("1x").
+            // We divide all API values by this to get user-facing labels.
             if hasUltrawide && switchOverFactors.count > 0 {
-                // The min zoom factor on a virtual device with ultrawide is
-                // the ultrawide's native factor (typically ~0.5).
-                // Some session presets/formats constrain minZoom to 1.0 even
-                // on triple-camera devices — in that case the ultrawide range
-                // isn't available so we omit the button entirely.
-                let minZoom = Float(device.minAvailableVideoZoomFactor)
-                if minZoom < 1.0 {
-                    result["ultrawideZoomFactor"] = minZoom
-                }
+                let wideApiZoom = CGFloat(switchOverFactors[0].floatValue)
+                self.zoomScaleDivisor = wideApiZoom
+
+                let minApiZoom = device.minAvailableVideoZoomFactor
+                result["ultrawideZoomFactor"] = Float(minApiZoom / wideApiZoom)
             } else if hasUltrawide {
+                self.zoomScaleDivisor = 1.0
                 result["ultrawideZoomFactor"] = 0.5
+            } else {
+                self.zoomScaleDivisor = 1.0
             }
 
             result["wideZoomFactor"] = 1.0
 
             if hasTelephoto && switchOverFactors.count > 0 {
-                // The last switch-over point is the telephoto's native zoom factor
-                let telephotoFactor = switchOverFactors.last!.floatValue
-                result["telephotoZoomFactor"] = telephotoFactor
+                let teleApiZoom = CGFloat(switchOverFactors.last!.floatValue)
+                result["telephotoZoomFactor"] = Float(teleApiZoom / self.zoomScaleDivisor)
             } else if hasTelephoto {
                 result["telephotoZoomFactor"] = 2.0
             }
         } else {
+            self.zoomScaleDivisor = 1.0
             // Fallback for non-virtual device sessions
             if hasUltrawide {
                 result["ultrawideZoomFactor"] = 0.5
@@ -610,7 +629,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     
     @objc func switchToPhysicalCamera(_ call: CAPPluginCall) {
         guard let input = currentInput,
-              let zoomFactor = call.getFloat("zoomFactor") else {
+              let userZoomFactor = call.getFloat("zoomFactor") else {
             call.reject("Camera not initialized or missing zoomFactor parameter")
             return
         }
@@ -621,14 +640,17 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         if isUsingVirtualDevice {
             do {
                 let device = input.device
+                // Convert user-facing zoom value back to API scale
+                let apiZoom = CGFloat(userZoomFactor) * zoomScaleDivisor
                 try device.lockForConfiguration()
                 let clampedZoom = max(
                     device.minAvailableVideoZoomFactor,
-                    min(CGFloat(zoomFactor), device.activeFormat.videoMaxZoomFactor)
+                    min(apiZoom, device.activeFormat.videoMaxZoomFactor)
                 )
                 device.videoZoomFactor = clampedZoom
                 device.unlockForConfiguration()
-                call.resolve(["zoom": Float(clampedZoom)])
+                // Return user-facing zoom value
+                call.resolve(["zoom": Float(clampedZoom / zoomScaleDivisor)])
             } catch {
                 call.reject("Failed to set zoom: \(error.localizedDescription)")
             }
@@ -764,6 +786,14 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         if let virtualDevice = foundVirtualDevice {
             camera = virtualDevice
             self.isUsingVirtualDevice = true
+            // Compute zoom scale divisor from switchover factors
+            let switchOvers = virtualDevice.virtualDeviceSwitchOverVideoZoomFactors
+            if switchOvers.count > 0 && virtualDevice.minAvailableVideoZoomFactor >= 1.0 {
+                // First switchover = the "1x" wide lens in API zoom scale
+                self.zoomScaleDivisor = CGFloat(switchOvers[0].floatValue)
+            } else {
+                self.zoomScaleDivisor = 1.0
+            }
         } else if let wideCamera = AVCaptureDevice.default(
             .builtInWideAngleCamera, for: .video, position: config.cameraPosition) {
             camera = wideCamera
@@ -801,7 +831,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
 
         do {
             try camera.lockForConfiguration()
-            camera.videoZoomFactor = config.zoom
+            // Convert user-facing zoom to API scale
+            camera.videoZoomFactor = config.zoom * zoomScaleDivisor
             if config.autoFocus && camera.isFocusModeSupported(.continuousAutoFocus) {
                 camera.focusMode = .continuousAutoFocus
             } else if camera.isFocusModeSupported(.locked) {
