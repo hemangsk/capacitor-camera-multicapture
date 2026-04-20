@@ -125,9 +125,10 @@ export interface CameraOverlayOptions {
   /**
    * Whether to show the edit (annotate) button on photo previews.
    * When false, markerjs2 is never loaded.
+   * Pass an object with `licenseKey` to activate marker.js 2 licensed mode.
    * @default false
    */
-  enableEditing?: boolean;
+  enableEditing?: boolean | { markerJsLicenseKey?: string };
   /**
    * Save captured photos and videos to the device gallery.
    * @default false

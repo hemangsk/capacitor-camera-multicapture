@@ -83,7 +83,7 @@ export interface CameraOverlayUIOptions {
     enabled?: boolean;
     lockToNearestStep?: boolean;
   };
-  enableEditing?: boolean;
+  enableEditing?: boolean | { markerJsLicenseKey?: string };
   enableSaving?: boolean;
   galleryAlbumName?: string;
 }

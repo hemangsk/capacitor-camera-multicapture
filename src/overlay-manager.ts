@@ -253,7 +253,8 @@ export class OverlayManager {
           }
         }
       },
-      this.options.enableEditing ?? false,
+      typeof this.options.enableEditing === 'object' ? true : (this.options.enableEditing ?? false),
+      typeof this.options.enableEditing === 'object' ? this.options.enableEditing.markerJsLicenseKey : undefined,
     );
 
     // Merge default buttons with user-provided options

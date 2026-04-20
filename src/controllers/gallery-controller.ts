@@ -28,6 +28,7 @@ export class GalleryController {
   private onVideoRemoved?: (event: VideoRemovedEvent) => void;
   private onMediaCountChanged?: (totalCount: number) => void;
   private enableEditing: boolean;
+  private markerJsLicenseKey?: string;
 
   constructor(
     galleryElement: HTMLElement,
@@ -40,6 +41,7 @@ export class GalleryController {
     onVideoRemoved?: (event: VideoRemovedEvent) => void,
     onMediaCountChanged?: (totalCount: number) => void,
     enableEditing?: boolean,
+    markerJsLicenseKey?: string,
   ) {
     this.galleryElement = galleryElement;
     this.thumbnailStyle = thumbnailStyle;
@@ -51,6 +53,7 @@ export class GalleryController {
     this.onVideoRemoved = onVideoRemoved;
     this.onMediaCountChanged = onMediaCountChanged;
     this.enableEditing = enableEditing ?? false;
+    this.markerJsLicenseKey = markerJsLicenseKey;
   }
 
   private notifyMediaCountChanged(): void {
@@ -320,7 +323,7 @@ export class GalleryController {
     const src = image.data.webPath || image.data.uri;
 
     try {
-      const result = await openImageEditor(src, image.data.editorState);
+      const result = await openImageEditor(src, image.data.editorState, this.markerJsLicenseKey);
       if (!result) return;
 
       // Write annotated image to disk so uri is a native file path
