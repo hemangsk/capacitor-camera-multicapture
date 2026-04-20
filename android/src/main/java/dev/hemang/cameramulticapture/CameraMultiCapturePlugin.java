@@ -86,6 +86,7 @@ public class CameraMultiCapturePlugin extends Plugin {
     private VideoCapture<Recorder> videoCapture;
     private Recording activeRecording;
     private PluginCall pendingVideoStopCall;
+    private JSObject autoStoppedVideoResult;
     private File currentVideoFile;
     private Camera camera;
     private ProcessCameraProvider cameraProvider;
@@ -272,6 +273,7 @@ public class CameraMultiCapturePlugin extends Plugin {
                 imageCapture = null;
                 videoCapture = null;
                 pendingVideoStopCall = null;
+                autoStoppedVideoResult = null;
                 currentVideoFile = null;
 
                 call.resolve();
@@ -497,6 +499,15 @@ public class CameraMultiCapturePlugin extends Plugin {
 
     @PluginMethod
     public void stopVideoRecording(PluginCall call) {
+        // If recording was already auto-stopped (e.g. by maxRecordingDuration),
+        // return the buffered result immediately.
+        if (autoStoppedVideoResult != null) {
+            JSObject buffered = autoStoppedVideoResult;
+            autoStoppedVideoResult = null;
+            call.resolve(buffered);
+            return;
+        }
+
         if (activeRecording == null) {
             call.reject("No active video recording to stop");
             return;
@@ -521,12 +532,10 @@ public class CameraMultiCapturePlugin extends Plugin {
             recording.close();
         }
 
-        if (call == null) {
-            return;
-        }
-
         if (finalizeEvent.hasError()) {
-            call.reject("Video recording failed: " + finalizeEvent.getError());
+            if (call != null) {
+                call.reject("Video recording failed: " + finalizeEvent.getError());
+            }
             return;
         }
 
@@ -535,7 +544,9 @@ public class CameraMultiCapturePlugin extends Plugin {
             outputUri = currentVideoFile != null ? Uri.fromFile(currentVideoFile) : null;
         }
         if (outputUri == null) {
-            call.reject("Video recording completed but no output URI is available");
+            if (call != null) {
+                call.reject("Video recording completed but no output URI is available");
+            }
             return;
         }
 
@@ -552,7 +563,14 @@ public class CameraMultiCapturePlugin extends Plugin {
         videoData.put("thumbnail", thumbnail != null ? thumbnail : "");
         videoData.put("duration", duration);
         result.put("value", videoData);
-        call.resolve(result);
+
+        if (call != null) {
+            call.resolve(result);
+        } else {
+            // Recording was auto-stopped by maxRecordingDuration.
+            // Buffer the result for the next stopVideoRecording call.
+            autoStoppedVideoResult = result;
+        }
     }
 
     private String generateVideoThumbnail(Uri videoUri) {

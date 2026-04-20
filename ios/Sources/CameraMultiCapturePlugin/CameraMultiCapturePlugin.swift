@@ -58,6 +58,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     var captureDelegate: PhotoCaptureDelegate?
     var videoCaptureDelegate: VideoCaptureDelegate?
     var pendingVideoStopCall: CAPPluginCall?
+    var autoStoppedVideoResult: [String: Any]?
     var maxRecordingDurationSeconds: Double = 0
     var enableSaving: Bool = false
     var galleryAlbumName: String = "Camera"
@@ -203,7 +204,18 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             self.movieOutput = nil
             self.videoCaptureDelegate = nil
             self.pendingVideoStopCall = nil
+            self.autoStoppedVideoResult = nil
             self.isUsingVirtualDevice = false
+
+            // Restore webView background after camera preview is removed
+            if let webView = self.bridge?.webView {
+                webView.isOpaque = true
+                webView.backgroundColor = nil
+                webView.scrollView.backgroundColor = nil
+                webView.layer.backgroundColor = nil
+                webView.evaluateJavaScript("document.documentElement.style.backgroundColor = ''", completionHandler: nil)
+            }
+
             call.resolve()
         }
     }
@@ -342,6 +354,14 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func stopVideoRecording(_ call: CAPPluginCall) {
+        // If recording was already auto-stopped (e.g. by maxRecordingDuration),
+        // return the buffered result immediately.
+        if let buffered = autoStoppedVideoResult {
+            autoStoppedVideoResult = nil
+            call.resolve(buffered)
+            return
+        }
+
         guard let movieOutput = movieOutput else {
             call.reject("Video output not initialized")
             return
@@ -364,14 +384,13 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             } catch { /* best effort */ }
         }
 
-        guard let call = pendingVideoStopCall else {
-            return
-        }
-        pendingVideoStopCall = nil
         defer { videoCaptureDelegate = nil }
 
         if let error = error {
-            call.reject("Video recording failed: \(error.localizedDescription)")
+            if let call = pendingVideoStopCall {
+                pendingVideoStopCall = nil
+                call.reject("Video recording failed: \(error.localizedDescription)")
+            }
             return
         }
 
@@ -382,13 +401,22 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             saveVideoToGallery(fileURL: outputURL)
         }
 
-        call.resolve([
+        let result: [String: Any] = [
             "value": [
                 "uri": outputURL.absoluteString,
                 "thumbnail": thumbnail,
                 "duration": duration
             ]
-        ])
+        ]
+
+        if let call = pendingVideoStopCall {
+            pendingVideoStopCall = nil
+            call.resolve(result)
+        } else {
+            // Recording was auto-stopped by maxRecordedDuration.
+            // Buffer the result for the next stopVideoRecording call.
+            autoStoppedVideoResult = result
+        }
     }
 
     private func saveVideoToGallery(fileURL: URL) {
