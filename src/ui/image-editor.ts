@@ -57,6 +57,7 @@ function loadImageElement(src: string): Promise<HTMLImageElement> {
 export function openImageEditor(
   src: string,
   previousState?: unknown,
+  licenseKey?: string,
 ): Promise<ImageEditorResult | null> {
   if (activeEditor) return Promise.resolve(null);
 
@@ -75,6 +76,9 @@ export function openImageEditor(
         backdrop.appendChild(imgEl);
 
         const markerArea = new MarkerArea(imgEl);
+        if (licenseKey) {
+          markerArea.addLicenseKey(licenseKey);
+        }
         activeEditor = markerArea;
 
         markerArea.targetRoot = backdrop;
