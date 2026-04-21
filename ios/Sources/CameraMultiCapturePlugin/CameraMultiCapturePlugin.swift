@@ -386,12 +386,20 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
 
         defer { videoCaptureDelegate = nil }
 
+        // When maxRecordedDuration is reached, AVFoundation reports
+        // AVError.maximumDurationReached. The video file is still valid,
+        // so we treat it as a successful recording.
         if let error = error {
-            if let call = pendingVideoStopCall {
-                pendingVideoStopCall = nil
-                call.reject("Video recording failed: \(error.localizedDescription)")
+            let nsError = error as NSError
+            let isDurationLimit = nsError.domain == AVFoundationErrorDomain
+                && nsError.code == AVError.maximumDurationReached.rawValue
+            if !isDurationLimit {
+                if let call = pendingVideoStopCall {
+                    pendingVideoStopCall = nil
+                    call.reject("Video recording failed: \(error.localizedDescription)")
+                }
+                return
             }
-            return
         }
 
         let thumbnail = generateVideoThumbnail(from: outputURL, size: 200) ?? ""

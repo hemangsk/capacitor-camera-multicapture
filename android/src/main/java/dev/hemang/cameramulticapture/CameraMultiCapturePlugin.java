@@ -532,7 +532,11 @@ public class CameraMultiCapturePlugin extends Plugin {
             recording.close();
         }
 
-        if (finalizeEvent.hasError()) {
+        // When durationLimitMillis is reached, CameraX reports
+        // ERROR_DURATION_LIMIT_REACHED. The video file is still valid,
+        // so we treat it as a successful recording.
+        if (finalizeEvent.hasError()
+                && finalizeEvent.getError() != VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED) {
             if (call != null) {
                 call.reject("Video recording failed: " + finalizeEvent.getError());
             }
