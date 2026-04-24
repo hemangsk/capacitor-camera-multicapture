@@ -1,4 +1,5 @@
-import { MarkerArea, Renderer, Activator } from '@markerjs/markerjs3';
+import { AnnotationEditor } from '@markerjs/markerjs-ui';
+import { Activator } from '@markerjs/markerjs3';
 import type { AnnotationState } from '@markerjs/markerjs3';
 
 const EDITOR_STYLES_ID = 'cmmc-image-editor-styles';
@@ -8,7 +9,7 @@ type ImageEditorResult = {
   state: AnnotationState;
 };
 
-let activeEditor: MarkerArea | null = null;
+let activeEditor: AnnotationEditor | null = null;
 
 function ensureEditorStyles(): void {
   if (document.getElementById(EDITOR_STYLES_ID)) return;
@@ -22,44 +23,13 @@ function ensureEditorStyles(): void {
       z-index: 99999;
       background: #000;
       display: flex;
-      flex-direction: column;
+      align-items: center;
+      justify-content: center;
       padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
       box-sizing: border-box;
     }
-    .cmmc-editor-toolbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 16px;
-      background: #1a1a2e;
-      z-index: 100001;
-      flex-shrink: 0;
-    }
-    .cmmc-editor-toolbar button {
-      background: none;
-      border: 1px solid rgba(255,255,255,0.3);
-      color: #e0e0e0;
-      padding: 8px 20px;
-      border-radius: 6px;
-      font-size: 15px;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .cmmc-editor-toolbar button.cmmc-save-btn {
-      background: #4CAF50;
-      border-color: #4CAF50;
-      color: #fff;
-    }
-    .cmmc-editor-area {
-      flex: 1;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-    }
-    .cmmc-editor-area marker-area {
+    .cmmc-editor-backdrop annotation-editor {
       display: block;
       width: 100%;
       height: 100%;
@@ -106,36 +76,19 @@ export function openImageEditor(
 
         const imgEl = await loadImageElement(src);
 
-        // Toolbar with cancel/save
-        const toolbar = document.createElement('div');
-        toolbar.className = 'cmmc-editor-toolbar';
+        const editor = document.createElement('annotation-editor') as AnnotationEditor;
+        editor.targetImage = imgEl;
+        editor.theme = 'dark';
+        editor.settings.rendererSettings.naturalSize = true;
+        editor.settings.rendererSettings.imageType = 'image/jpeg';
+        editor.settings.rendererSettings.imageQuality = 1;
 
-        const cancelBtn = document.createElement('button');
-        cancelBtn.textContent = 'Cancel';
-
-        const saveBtn = document.createElement('button');
-        saveBtn.className = 'cmmc-save-btn';
-        saveBtn.textContent = 'Save';
-
-        toolbar.appendChild(cancelBtn);
-        toolbar.appendChild(saveBtn);
-        backdrop.appendChild(toolbar);
-
-        // Editor area
-        const editorArea = document.createElement('div');
-        editorArea.className = 'cmmc-editor-area';
-        backdrop.appendChild(editorArea);
-
-        // Create MarkerArea (web component)
-        const markerArea = document.createElement('marker-area') as MarkerArea;
-        activeEditor = markerArea;
-        editorArea.appendChild(markerArea);
-
-        markerArea.targetImage = imgEl;
+        activeEditor = editor;
+        backdrop.appendChild(editor);
 
         if (previousState) {
-          markerArea.addEventListener('areainit', () => {
-            markerArea.restoreState(previousState as AnnotationState);
+          editor.markerArea.addEventListener('areainit', () => {
+            editor.restoreState(previousState as AnnotationState);
           }, { once: true });
         }
 
@@ -147,29 +100,15 @@ export function openImageEditor(
           }
         };
 
-        cancelBtn.addEventListener('click', () => {
+        editor.addEventListener('editorsave', (event) => {
+          const { dataUrl, state } = event.detail;
           cleanup();
-          resolve(null);
+          resolve(dataUrl ? { dataUrl, state } : null);
         });
 
-        saveBtn.addEventListener('click', async () => {
-          try {
-            const state = markerArea.getState();
-
-            const renderer = new Renderer();
-            renderer.targetImage = imgEl;
-            renderer.naturalSize = true;
-            renderer.imageType = 'image/jpeg';
-            renderer.imageQuality = 1;
-
-            const dataUrl = await renderer.rasterize(state);
-
-            cleanup();
-            resolve({ dataUrl, state });
-          } catch (_err) {
-            cleanup();
-            resolve(null);
-          }
+        editor.addEventListener('editorclose', () => {
+          cleanup();
+          resolve(null);
         });
       } catch (_err) {
         activeEditor = null;
