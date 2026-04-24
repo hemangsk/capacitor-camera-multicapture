@@ -73,8 +73,8 @@ import java.util.UUID;
     permissions = {
         @Permission(strings = {Manifest.permission.CAMERA}, alias = "camera"),
         @Permission(strings = {
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
         }, alias = "photos"),
         @Permission(strings = {Manifest.permission.RECORD_AUDIO}, alias = "audio")
     }
@@ -1167,27 +1167,40 @@ public class CameraMultiCapturePlugin extends Plugin {
     @PluginMethod
     public void checkPermissions(PluginCall call) {
         JSObject result = new JSObject();
-        
+
         // Check camera permission
         PermissionState cameraState = getPermissionState("camera");
         result.put("camera", cameraState.toString());
-        
+
         // Check photos/storage permission
+        // On Android 14+, selected photos access returns "limited" — treat as "granted"
         PermissionState photosState = getPermissionState("photos");
-        result.put("photos", photosState.toString());
+        String photosValue = photosState == PermissionState.PROMPT_WITH_RATIONALE && isPhotosPartialAccess()
+            ? "granted"
+            : photosState.toString();
+        result.put("photos", photosValue);
 
         // Check microphone permission
         PermissionState audioState = getPermissionState("audio");
         result.put("audio", audioState.toString());
-        
+
         call.resolve(result);
+    }
+
+    private boolean isPhotosPartialAccess() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            return ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED;
+        }
+        return false;
     }
 
     @PluginMethod
     public void requestPermissions(PluginCall call) {
         // Request all permissions that aren't already granted
-        if (getPermissionState("camera") != PermissionState.GRANTED || 
-            getPermissionState("photos") != PermissionState.GRANTED ||
+        PermissionState photosState = getPermissionState("photos");
+        boolean photosOk = photosState == PermissionState.GRANTED || isPhotosPartialAccess();
+        if (getPermissionState("camera") != PermissionState.GRANTED ||
+            !photosOk ||
             getPermissionState("audio") != PermissionState.GRANTED) {
             requestPermissionForAliases(new String[]{"camera", "photos", "audio"}, call, "permissionCallback");
         } else {
