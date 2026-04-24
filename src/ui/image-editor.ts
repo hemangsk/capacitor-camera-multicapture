@@ -29,7 +29,7 @@ function ensureEditorStyles(): void {
       padding-bottom: env(safe-area-inset-bottom);
       box-sizing: border-box;
     }
-    .cmmc-editor-backdrop annotation-editor {
+    .cmmc-editor-backdrop mjsui-annotation-editor {
       display: block;
       width: 100%;
       height: 100%;
@@ -76,7 +76,7 @@ export function openImageEditor(
 
         const imgEl = await loadImageElement(src);
 
-        const editor = document.createElement('annotation-editor') as AnnotationEditor;
+        const editor = new AnnotationEditor();
         editor.targetImage = imgEl;
         editor.theme = 'dark';
         editor.settings.rendererSettings.naturalSize = true;
