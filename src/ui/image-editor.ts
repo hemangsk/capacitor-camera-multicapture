@@ -418,23 +418,17 @@ export function openImageEditor(
           updateUndoRedo();
         });
 
-        // Zoom controls — track the fitted zoom level as the minimum
-        let fittedZoom = 0;
-        markerArea.addEventListener('areashow', () => {
-          fittedZoom = markerArea.zoomLevel;
-        });
-
+        // Zoom controls
         zoomInBtn.addEventListener('click', () => {
           markerArea.zoomLevel = Math.min(markerArea.zoomLevel + 0.25, 4);
         });
         zoomOutBtn.addEventListener('click', () => {
-          markerArea.zoomLevel = Math.max(markerArea.zoomLevel - 0.25, fittedZoom);
+          markerArea.zoomLevel = Math.max(markerArea.zoomLevel - 0.25, 0.1);
         });
         zoomResetBtn.addEventListener('click', () => {
           markerArea.autoZoomIn = false;
           markerArea.autoZoomOut = true;
           markerArea.autoZoom();
-          fittedZoom = markerArea.zoomLevel;
         });
 
         // Restore previous state
