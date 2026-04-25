@@ -419,7 +419,7 @@ export function openImageEditor(
         });
 
         // Zoom controls — track the fitted zoom level as the minimum
-        let fittedZoom = markerArea.zoomLevel;
+        let fittedZoom = 0;
         markerArea.addEventListener('areashow', () => {
           fittedZoom = markerArea.zoomLevel;
         });
