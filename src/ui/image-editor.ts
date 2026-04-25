@@ -131,7 +131,7 @@ function ensureEditorStyles(): void {
       justify-content: space-between;
       align-items: center;
       padding: 6px 12px;
-      background: #1a1a1a;
+      background: #000;
       flex-shrink: 0;
     }
     .cmmc-editor-top-bar button {
@@ -166,7 +166,7 @@ function ensureEditorStyles(): void {
       overflow-x: auto;
       gap: 2px;
       padding: 6px 8px;
-      background: #1a1a1a;
+      background: #000;
       flex-shrink: 0;
       -webkit-overflow-scrolling: touch;
     }
@@ -218,7 +218,7 @@ function ensureEditorStyles(): void {
       align-items: center;
       gap: 16px;
       padding: 8px 12px;
-      background: #1a1a1a;
+      background: #000;
       flex-shrink: 0;
     }
     .cmmc-editor-bottom-bar button {
