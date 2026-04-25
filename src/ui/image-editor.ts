@@ -134,7 +134,7 @@ function ensureEditorStyles(): void {
       position: fixed;
       inset: 0;
       z-index: 99999;
-      background: #1a1a2e;
+      background: #000;
       display: flex;
       flex-direction: column;
       padding-top: env(safe-area-inset-top);
@@ -147,12 +147,12 @@ function ensureEditorStyles(): void {
       justify-content: space-between;
       align-items: center;
       padding: 6px 12px;
-      background: #16213e;
+      background: #1a1a1a;
       flex-shrink: 0;
     }
     .cmmc-editor-top-bar button {
       background: none;
-      border: 1px solid rgba(255,255,255,0.3);
+      border: 1px solid rgba(255,255,255,0.25);
       color: #e0e0e0;
       padding: 7px 18px;
       border-radius: 6px;
@@ -161,8 +161,8 @@ function ensureEditorStyles(): void {
       -webkit-tap-highlight-color: transparent;
     }
     .cmmc-editor-top-bar .cmmc-save-btn {
-      background: #4CAF50;
-      border-color: #4CAF50;
+      background: rgba(255,255,255,0.15);
+      border-color: rgba(255,255,255,0.3);
       color: #fff;
     }
     .cmmc-editor-top-bar .cmmc-undo-redo {
@@ -182,7 +182,7 @@ function ensureEditorStyles(): void {
       overflow-x: auto;
       gap: 2px;
       padding: 6px 8px;
-      background: #16213e;
+      background: #1a1a1a;
       flex-shrink: 0;
       -webkit-overflow-scrolling: touch;
     }
@@ -199,13 +199,13 @@ function ensureEditorStyles(): void {
       border-radius: 8px;
       border: none;
       background: rgba(255,255,255,0.08);
-      color: #ccc;
+      color: #aaa;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
       padding: 0;
     }
     .cmmc-tool-btn.active {
-      background: #4CAF50;
+      background: rgba(255,255,255,0.2);
       color: #fff;
     }
     .cmmc-tool-btn svg {
@@ -234,12 +234,12 @@ function ensureEditorStyles(): void {
       align-items: center;
       gap: 16px;
       padding: 8px 12px;
-      background: #16213e;
+      background: #1a1a1a;
       flex-shrink: 0;
     }
     .cmmc-editor-bottom-bar button {
       background: none;
-      border: 1px solid rgba(255,255,255,0.3);
+      border: 1px solid rgba(255,255,255,0.25);
       color: #e0e0e0;
       padding: 7px 14px;
       border-radius: 6px;
@@ -362,6 +362,8 @@ export function openImageEditor(
         const markerArea = new MarkerArea();
         activeEditor = markerArea;
         markerArea.targetImage = imgEl;
+        markerArea.autoZoomIn = false;
+        markerArea.autoZoomOut = true;
 
         // Register marker types
         MARKER_TYPES.forEach((mt) => {
@@ -415,17 +417,21 @@ export function openImageEditor(
         });
 
         // Update undo/redo button state
-        markerArea.addEventListener('areastatechange', () => {
+        const updateUndoRedo = () => {
           undoBtn.disabled = !markerArea.isUndoPossible;
           redoBtn.disabled = !markerArea.isRedoPossible;
-        });
+        };
+
+        markerArea.addEventListener('areastatechange', updateUndoRedo);
 
         undoBtn.addEventListener('click', () => {
           markerArea.undo();
+          updateUndoRedo();
         });
 
         redoBtn.addEventListener('click', () => {
           markerArea.redo();
+          updateUndoRedo();
         });
 
         // Zoom controls
@@ -436,7 +442,9 @@ export function openImageEditor(
           markerArea.zoomLevel = Math.max(markerArea.zoomLevel - 0.25, 0.25);
         });
         zoomResetBtn.addEventListener('click', () => {
-          markerArea.zoomLevel = 1;
+          markerArea.autoZoomIn = true;
+          markerArea.autoZoomOut = true;
+          markerArea.autoZoom();
         });
 
         // Restore previous state
