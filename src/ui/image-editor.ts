@@ -10,8 +10,6 @@ import {
   ArrowMarker,
   LineMarker,
   CurveMarker,
-  TextMarker,
-  CalloutMarker,
   FreehandMarker,
   HighlighterMarker,
   PolygonMarker,
@@ -20,8 +18,6 @@ import {
   ArrowMarkerEditor,
   LinearMarkerEditor,
   CurveMarkerEditor,
-  TextMarkerEditor,
-  CalloutMarkerEditor,
   FreehandMarkerEditor,
   PolygonMarkerEditor,
 } from '@markerjs/markerjs3';
@@ -91,18 +87,6 @@ const MARKER_TYPES: MarkerTypeDef[] = [
     icon: '<path d="M4 18 Q12 2 20 18" fill="none" stroke="currentColor" stroke-width="2"/>',
     markerType: CurveMarker as unknown as typeof MarkerBase,
     editorType: CurveMarkerEditor as unknown as typeof MarkerBaseEditor<MarkerBase>,
-  },
-  {
-    name: 'Text',
-    icon: '<text x="6" y="18" font-size="18" font-weight="bold" fill="currentColor">T</text>',
-    markerType: TextMarker as unknown as typeof MarkerBase,
-    editorType: TextMarkerEditor as unknown as typeof MarkerBaseEditor<MarkerBase>,
-  },
-  {
-    name: 'Callout',
-    icon: '<rect x="2" y="2" width="18" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><polygon points="8,15 6,22 14,15" fill="currentColor"/>',
-    markerType: CalloutMarker as unknown as typeof MarkerBase,
-    editorType: CalloutMarkerEditor as unknown as typeof MarkerBaseEditor<MarkerBase>,
   },
   {
     name: 'Freehand',
@@ -282,7 +266,7 @@ export function openImageEditor(
   ensureEditorStyles();
 
   if (licenseKey) {
-    Activator.addKey('markerjs3', licenseKey);
+    Activator.addKey('MJS3', licenseKey);
   }
 
   return new Promise<ImageEditorResult | null>((resolve) => {
@@ -434,17 +418,23 @@ export function openImageEditor(
           updateUndoRedo();
         });
 
-        // Zoom controls
+        // Zoom controls — track the fitted zoom level as the minimum
+        let fittedZoom = markerArea.zoomLevel;
+        markerArea.addEventListener('areashow', () => {
+          fittedZoom = markerArea.zoomLevel;
+        });
+
         zoomInBtn.addEventListener('click', () => {
           markerArea.zoomLevel = Math.min(markerArea.zoomLevel + 0.25, 4);
         });
         zoomOutBtn.addEventListener('click', () => {
-          markerArea.zoomLevel = Math.max(markerArea.zoomLevel - 0.25, 0.25);
+          markerArea.zoomLevel = Math.max(markerArea.zoomLevel - 0.25, fittedZoom);
         });
         zoomResetBtn.addEventListener('click', () => {
-          markerArea.autoZoomIn = true;
+          markerArea.autoZoomIn = false;
           markerArea.autoZoomOut = true;
           markerArea.autoZoom();
+          fittedZoom = markerArea.zoomLevel;
         });
 
         // Restore previous state
