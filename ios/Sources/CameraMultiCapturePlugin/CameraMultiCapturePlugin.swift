@@ -349,6 +349,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             self?.handleVideoRecordingFinished(outputURL: outputURL, error: error)
         }
         self.videoCaptureDelegate = delegate
+		_ = movieOutput.connection(with: .audio) // ensure audio connection is active before recording
         movieOutput.startRecording(to: fileURL, recordingDelegate: delegate)
         call.resolve()
     }
@@ -844,6 +845,18 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         if session.canAddInput(input) {
             session.addInput(input)
             self.currentInput = input
+            if let audioDevice = AVCaptureDevice.default(for: .audio) {
+                do {
+                    let audioInput = try AVCaptureDeviceInput(
+                        device:
+                            audioDevice)
+                    if session.canAddInput(audioInput) {
+                        session.addInput(audioInput)
+                    }
+                } catch {
+                    print("Audio input config error: \(error)")
+                }
+            }
         } else {
             throw NSError(
                 domain: "Camera", code: 0,
@@ -861,6 +874,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         if session.canAddOutput(movieOut) {
             session.addOutput(movieOut)
             self.movieOutput = movieOut
+            _ = movieOut.connection(with: .audio)  // forces AVFoundation to negotiate audio connection eagerly
         }
         session.commitConfiguration()
         self.captureSession = session
