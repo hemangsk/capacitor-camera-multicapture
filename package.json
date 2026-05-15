@@ -86,7 +86,7 @@
   },
   "dependencies": {
     "@capacitor/filesystem": "7.1.1",
-    "@markerjs/markerjs3": "^3.10.0",
+    "markerjs2": "^2.32.7",
     "bigger-picture": "github:hemangsk/bigger-picture#css-text-export",
     "lodash": "4.17.21"
   }
