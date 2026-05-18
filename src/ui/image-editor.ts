@@ -2,9 +2,6 @@ import { Activator, MarkerArea } from 'markerjs2';
 
 const EDITOR_STYLES_ID = 'cmmc-image-editor-styles';
 
-/** Default Marker.js 2 license (overridable via `openImageEditor` `licenseKey`). */
-const DEFAULT_MARKERJS2_LICENSE = 'REMOVED_KEY';
-
 export type ImageEditorResult = {
   dataUrl: string;
   state: unknown;
@@ -90,8 +87,9 @@ export function openImageEditor(
         markerArea.renderImageType = 'image/jpeg';
         markerArea.renderImageQuality = 1;
 
-        const key = (licenseKey && licenseKey.trim()) || DEFAULT_MARKERJS2_LICENSE;
-        Activator.addKey(key);
+        if (licenseKey && licenseKey.trim()) {
+          Activator.addKey(licenseKey.trim());
+        }
 
         markerArea.addEventListener('render', (event: { dataUrl: string; state: unknown }) => {
           backdrop?.remove();
