@@ -25,7 +25,7 @@ function ensureEditorStyles(): void {
       justify-content: center;
       padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
-      box-sizing: border-box;
+    box-sizing: border-box;
     }
     .cmmc-editor-backdrop img {
       max-width: 100%;
@@ -78,6 +78,10 @@ export function openImageEditor(
         backdrop.className = 'cmmc-editor-backdrop';
         document.body.appendChild(backdrop);
 
+        if (licenseKey && licenseKey.trim()) {
+          Activator.addKey(licenseKey.trim());
+        }
+
         const img = await loadImageElement(src);
         backdrop.appendChild(img);
 
@@ -86,10 +90,6 @@ export function openImageEditor(
         markerArea.renderAtNaturalSize = true;
         markerArea.renderImageType = 'image/jpeg';
         markerArea.renderImageQuality = 1;
-
-        if (licenseKey && licenseKey.trim()) {
-          Activator.addKey(licenseKey.trim());
-        }
 
         markerArea.addEventListener('render', (event: { dataUrl: string; state: unknown }) => {
           backdrop?.remove();
