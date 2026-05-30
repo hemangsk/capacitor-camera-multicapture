@@ -1,7 +1,6 @@
 package dev.hemang.cameramulticapture;
 
 import android.Manifest;
-import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -72,10 +71,6 @@ import java.util.UUID;
     name = "CameraMultiCapture",
     permissions = {
         @Permission(strings = {Manifest.permission.CAMERA}, alias = "camera"),
-        @Permission(strings = {
-            Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
-        }, alias = "photos"),
         @Permission(strings = {Manifest.permission.RECORD_AUDIO}, alias = "audio")
     }
 )
@@ -1172,13 +1167,9 @@ public class CameraMultiCapturePlugin extends Plugin {
         PermissionState cameraState = getPermissionState("camera");
         result.put("camera", cameraState.toString());
 
-        // Check photos/storage permission
-        // On Android 14+, selected photos access returns "limited" — treat as "granted"
-        PermissionState photosState = getPermissionState("photos");
-        String photosValue = photosState == PermissionState.PROMPT_WITH_RATIONALE && isPhotosPartialAccess()
-            ? "granted"
-            : photosState.toString();
-        result.put("photos", photosValue);
+        // photos alias removed — plugin only captures, never reads media library.
+        // Hardcode "granted" for backward compatibility with consumers checking this field.
+        result.put("photos", "granted");
 
         // Check microphone permission
         PermissionState audioState = getPermissionState("audio");
@@ -1187,22 +1178,12 @@ public class CameraMultiCapturePlugin extends Plugin {
         call.resolve(result);
     }
 
-    private boolean isPhotosPartialAccess() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            return ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED;
-        }
-        return false;
-    }
-
     @PluginMethod
     public void requestPermissions(PluginCall call) {
-        // Request all permissions that aren't already granted
-        PermissionState photosState = getPermissionState("photos");
-        boolean photosOk = photosState == PermissionState.GRANTED || isPhotosPartialAccess();
+        // Only request camera + audio — plugin never reads media library.
         if (getPermissionState("camera") != PermissionState.GRANTED ||
-            !photosOk ||
             getPermissionState("audio") != PermissionState.GRANTED) {
-            requestPermissionForAliases(new String[]{"camera", "photos", "audio"}, call, "permissionCallback");
+            requestPermissionForAliases(new String[]{"camera", "audio"}, call, "permissionCallback");
         } else {
             // All permissions already granted
             checkPermissions(call);
