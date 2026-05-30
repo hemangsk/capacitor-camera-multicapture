@@ -258,7 +258,6 @@ export interface CameraOverlayResult {
  */
 export interface PermissionStatus {
   camera: PermissionState;
-  photos: PermissionState;
   audio: PermissionState;
 }
 

@@ -96,20 +96,14 @@ export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCaptu
       // Check camera permission
       const cameraResult = await navigator.permissions.query({ name: 'camera' as PermissionName });
       
-      // For photos/storage, we'll assume granted since most browsers handle this transparently
-      // Web browsers typically don't have a separate "photos" permission - file access is handled by user interaction
-      const photosState: 'granted' | 'denied' | 'prompt' = 'granted';
-
       return {
         camera: cameraResult.state as 'granted' | 'denied' | 'prompt',
-        photos: photosState,
         audio: 'granted'
       };
     } catch (error) {
       // If permission query fails, assume we need to prompt
       return {
         camera: 'prompt',
-        photos: 'granted',
         audio: 'granted'
       };
     }
@@ -136,7 +130,6 @@ export class CameraMultiCaptureWeb extends WebPlugin implements CameraMultiCaptu
       // Return denied state
       return {
         camera: 'denied',
-        photos: 'granted', // Web doesn't have separate photos permission
         audio: 'granted'
       };
     }

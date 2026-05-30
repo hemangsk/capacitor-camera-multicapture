@@ -1167,10 +1167,6 @@ public class CameraMultiCapturePlugin extends Plugin {
         PermissionState cameraState = getPermissionState("camera");
         result.put("camera", cameraState.toString());
 
-        // photos alias removed — plugin only captures, never reads media library.
-        // Hardcode "granted" for backward compatibility with consumers checking this field.
-        result.put("photos", "granted");
-
         // Check microphone permission
         PermissionState audioState = getPermissionState("audio");
         result.put("audio", audioState.toString());
