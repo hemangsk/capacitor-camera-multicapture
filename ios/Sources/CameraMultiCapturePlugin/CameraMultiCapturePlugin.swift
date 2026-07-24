@@ -47,6 +47,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
 
     var captureSession: AVCaptureSession?
     var currentInput: AVCaptureDeviceInput?
+    var audioInput: AVCaptureDeviceInput?
     var photoOutput: AVCapturePhotoOutput?
     var movieOutput: AVCaptureMovieFileOutput?
     var previewLayer: AVCaptureVideoPreviewLayer?
@@ -200,6 +201,7 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             self.previewLayer?.removeFromSuperlayer()
             self.captureSession = nil
             self.currentInput = nil
+            self.audioInput = nil
             self.photoOutput = nil
             self.movieOutput = nil
             self.videoCaptureDelegate = nil
@@ -304,6 +306,34 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         startVideoRecordingInternal(call)
     }
 
+    // Adds/removes the microphone lazily around video recording. Keeping the mic
+    // out of the session during photo capture / preview prevents iOS from
+    // interrupting (and freezing) the whole session when a phone call grabs the
+    // audio hardware. See configureSession for the full rationale.
+    private func addAudioInput() {
+        guard let session = captureSession, audioInput == nil,
+              let audioDevice = AVCaptureDevice.default(for: .audio) else { return }
+        do {
+            let input = try AVCaptureDeviceInput(device: audioDevice)
+            session.beginConfiguration()
+            if session.canAddInput(input) {
+                session.addInput(input)
+                self.audioInput = input
+            }
+            session.commitConfiguration()
+        } catch {
+            print("[CameraMultiCapture] Audio input config error: \(error)")
+        }
+    }
+
+    private func removeAudioInput() {
+        guard let session = captureSession, let input = audioInput else { return }
+        session.beginConfiguration()
+        session.removeInput(input)
+        session.commitConfiguration()
+        self.audioInput = nil
+    }
+
     private func startVideoRecordingInternal(_ call: CAPPluginCall) {
         guard let movieOutput = movieOutput else {
             call.reject("Video output not initialized")
@@ -313,6 +343,8 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("Video recording is already in progress")
             return
         }
+
+        addAudioInput()
 
         currentOrientation = detectCurrentOrientation()
         if let videoConnection = movieOutput.connection(with: .video) {
@@ -377,6 +409,10 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func handleVideoRecordingFinished(outputURL: URL, error: Error?) {
+        // Release the mic as soon as recording ends so the preview session is no
+        // longer interruptible by an incoming phone call.
+        removeAudioInput()
+
         if let device = currentInput?.device, device.hasTorch, device.torchMode != .off {
             do {
                 try device.lockForConfiguration()
@@ -845,18 +881,12 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         if session.canAddInput(input) {
             session.addInput(input)
             self.currentInput = input
-            if let audioDevice = AVCaptureDevice.default(for: .audio) {
-                do {
-                    let audioInput = try AVCaptureDeviceInput(
-                        device:
-                            audioDevice)
-                    if session.canAddInput(audioInput) {
-                        session.addInput(audioInput)
-                    }
-                } catch {
-                    print("Audio input config error: \(error)")
-                }
-            }
+            // Audio input is added lazily in startVideoRecordingInternal, not here.
+            // A session that holds the microphone gets fully interrupted by iOS when
+            // a phone call takes the audio hardware (InterruptionReason
+            // .audioDeviceInUseByAnotherClient), which freezes the video preview.
+            // Photo capture / preview never need audio, so we keep the mic out of the
+            // session except while recording video.
         } else {
             throw NSError(
                 domain: "Camera", code: 0,
@@ -874,7 +904,6 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         if session.canAddOutput(movieOut) {
             session.addOutput(movieOut)
             self.movieOutput = movieOut
-            _ = movieOut.connection(with: .audio)  // forces AVFoundation to negotiate audio connection eagerly
         }
         session.commitConfiguration()
         self.captureSession = session
