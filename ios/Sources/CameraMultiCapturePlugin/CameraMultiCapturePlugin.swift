@@ -1,4 +1,5 @@
 import AVFoundation
+import CallKit
 import Capacitor
 import Foundation
 import Photos
@@ -306,11 +307,24 @@ public class CameraMultiCapturePlugin: CAPPlugin, CAPBridgedPlugin {
         startVideoRecordingInternal(call)
     }
 
+    // True while a phone/VoIP call currently owns the audio hardware.
+    private let callObserver = CXCallObserver()
+    private var isCallActive: Bool {
+        callObserver.calls.contains { !$0.hasEnded }
+    }
+
     // Adds/removes the microphone lazily around video recording. Keeping the mic
     // out of the session during photo capture / preview prevents iOS from
     // interrupting (and freezing) the whole session when a phone call grabs the
     // audio hardware. See configureSession for the full rationale.
     private func addAudioInput() {
+        // During a call the audio hardware belongs to the call; adding an audio
+        // input would let iOS interrupt the whole session, freezing the preview and
+        // stalling the recording at 00:00. Record video-only in that case instead.
+        guard !isCallActive else {
+            print("[CameraMultiCapture] Active call detected — recording video without audio")
+            return
+        }
         guard let session = captureSession, audioInput == nil,
               let audioDevice = AVCaptureDevice.default(for: .audio) else { return }
         do {
